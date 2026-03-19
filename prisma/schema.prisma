@@ -1,0 +1,127 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String       @id @default(cuid())
+  email            String       @unique
+  name             String?
+  password         String?
+  role             String       @default("user")
+  isActive         Boolean      @default(true)
+  mobileNumber     String?
+  language         String       @default("en")
+  accountBalance   Float        @default(0)
+  profilePicture   String?
+  deliveryAddress  String?
+  firstName        String?
+  lastName         String?
+  orders           Order[]
+  ratings          Rating[]
+  promoCodes       PromoCode[]
+  referralsCreated Referral[]   @relation("referrer")
+  referralsReceived Referral[]  @relation("referred")
+  supportTickets   SupportTicket[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model Product {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  image       String?
+  category    String?
+  stock       Int        @default(0)
+  salesCount  Int        @default(0)
+  rating      Float      @default(0)
+  orderItems  OrderItem[]
+  ratings     Rating[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+
+model Order {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  items     OrderItem[]
+  total     Float
+  status    String      @default("pending")
+  stripeId  String?     @unique
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      @default(5)
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+}
+model PromoCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  discount    Float
+  description String?
+  expiryDate  DateTime
+  maxUses     Int      @default(1)
+  currentUses Int      @default(0)
+  minPurchase Float    @default(0)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Referral {
+  id            String   @id @default(cuid())
+  referrerId    String
+  referrer      User     @relation("referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId    String
+  referred      User     @relation("referred", fields: [referredId], references: [id], onDelete: Cascade)
+  rewardAmount  Float    @default(25)
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   String
+  message   String
+  status    String   @default("open")
+  priority  String   @default("normal")
+  response  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
