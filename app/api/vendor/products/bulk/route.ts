@@ -51,8 +51,6 @@ export async function POST(request: NextRequest) {
             price: parseFloat(product.price),
             stock: parseInt(product.stock) || 0,
             category: product.category || null,
-            stock: parseInt(product.stock) || 0,
-            category: product.category || null,
           }
         })
 
