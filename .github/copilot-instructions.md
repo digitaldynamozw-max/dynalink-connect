@@ -3,7 +3,7 @@
 This file provides workspace-specific custom instructions to Copilot for the DynaLink Connect project.
 
 ## Project Overview
-DynaLink Connect is a modern e-commerce store built with Next.js, similar to WooCommerce. It includes product catalog, shopping cart, user authentication, payment integration with Stripe, and an admin dashboard.
+DynaLink Connect is a modern e-commerce store built with Next.js, similar to WooCommerce. It includes product catalog, shopping cart, user authentication, payment integration with PayNow, and an admin dashboard.
 
 ## Project Setup Checklist
 - [x] Verify that the copilot-instructions.md file in the .github directory is created
@@ -24,7 +24,7 @@ DynaLink Connect is a modern e-commerce store built with Next.js, similar to Woo
 - Tailwind CSS
 - Prisma with SQLite
 - NextAuth.js
-- Stripe
+- PayNow Payment Gateway
 - Zustand
 
 ### Important Commands
@@ -40,10 +40,12 @@ DynaLink Connect is a modern e-commerce store built with Next.js, similar to Woo
 - Product catalog with search and filtering
 - Shopping cart with Zustand state management
 - User authentication with NextAuth.js
-- Stripe payment integration (test mode)
+- PayNow payment integration
+- Multi-vendor marketplace with storefronts
+- Automatic delivery fee calculation
 - User profiles with settings, promo codes, and referrals
 - Support ticket system
-- Admin dashboard for product management
+- Vendor dashboard for product management
 - Order history and tracking
 
 ### API Routes

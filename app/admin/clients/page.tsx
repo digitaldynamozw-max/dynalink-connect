@@ -7,6 +7,7 @@ interface User {
   id: string
   email: string
   name: string
+  vendorName?: string
   role: string
   accountBalance: number
   isActive?: boolean
@@ -33,15 +34,20 @@ export default function ClientsPage() {
   const fetchClients = async () => {
     try {
       setLoading(true)
+      setError(null)
       const res = await fetch('/api/admin/clients')
       if (res.ok) {
         const data = await res.json()
+        console.log('Loaded clients:', data.length)
         setClients(data)
       } else {
-        setError('Failed to load clients')
+        const errorData = await res.json().catch(() => ({}))
+        console.error('API error:', res.status, errorData)
+        setError(`Failed to load clients: ${res.status}`)
       }
     } catch (err) {
-      setError('Error fetching clients')
+      console.error('Fetch error:', err)
+      setError(`Error fetching clients: ${(err as Error).message}`)
     } finally {
       setLoading(false)
     }
@@ -192,22 +198,41 @@ export default function ClientsPage() {
               </tr>
             </thead>
             <tbody>
-              {clients.map((client) => (
-                <tr key={client.id} className="border-b hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    {editingId === client.id ? (
-                      <input
-                        type="text"
-                        value={editForm.name || ''}
-                        onChange={(e) =>
-                          setEditForm({ ...editForm, name: e.target.value })
-                        }
-                        className="border rounded px-2 py-1 w-40"
-                      />
-                    ) : (
-                      client.name
-                    )}
+              {clients.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                    <div className="space-y-2">
+                      <p className="text-lg font-semibold">No clients or vendors found</p>
+                      <p className="text-sm">Clients and vendors will appear here once they register</p>
+                    </div>
                   </td>
+                </tr>
+              ) : (
+                clients.map((client) => (
+                  <tr key={client.id} className="border-b hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div>
+                        {editingId === client.id ? (
+                          <input
+                            type="text"
+                            value={editForm.name || ''}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, name: e.target.value })
+                            }
+                            className="border rounded px-2 py-1 w-40"
+                            title="Client name"
+                            placeholder="Client name"
+                          />
+                        ) : (
+                          <>
+                            <div className="font-semibold">{client.name || client.vendorName}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {client.role === 'vendor' ? '🏪 Vendor' : '👤 Client'}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   <td className="px-6 py-4">{client.email}</td>
                   <td className="px-6 py-4 font-semibold text-blue-600">
                     ${client.accountBalance.toFixed(2)}
@@ -302,7 +327,8 @@ export default function ClientsPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>

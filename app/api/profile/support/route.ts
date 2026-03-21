@@ -14,8 +14,8 @@ export async function GET() {
       orderBy: { createdAt: 'desc' }
     })
 
-    const open = tickets.filter(t => t.status === 'open').length
-    const resolved = tickets.filter(t => t.status === 'resolved').length
+    const open = tickets.filter((t: any) => t.status === 'open').length
+    const resolved = tickets.filter((t: any) => t.status === 'resolved').length
 
     return NextResponse.json({
       tickets,

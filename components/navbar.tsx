@@ -4,9 +4,11 @@ import Link from 'next/link'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import { ShoppingCart, LogOut } from 'lucide-react'
 import Image from 'next/image'
+import { useCartStore } from '@/lib/store'
 
 export function Navbar() {
   const { data: session } = useSession()
+  const { items } = useCartStore()
 
   return (
     <nav className="bg-blue-600 shadow-md sticky top-0 z-50">
@@ -15,7 +17,15 @@ export function Navbar() {
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/">
-              <Image src="/logo.png" alt="DynaLink Connect logo" className="h-10 w-auto" width={40} height={40} />
+              <Image 
+                src="/logo.png" 
+                alt="DynaLink Connect logo" 
+                className="h-12 w-auto" 
+                width={180} 
+                height={60}
+                priority
+                quality={95}
+              />
             </Link>
           </div>
 
@@ -29,11 +39,19 @@ export function Navbar() {
             </Link>
             {session && (
               <>
+                <Link href="/products" className="text-white hover:text-gray-200 font-medium">
+                  Marketplace
+                </Link>
+                <Link href="/vendors" className="text-white hover:text-gray-200 font-medium">
+                  Vendors
+                </Link>
+                {(session.user as any)?.isVendor && (
+                  <Link href="/vendor/dashboard" className="text-green-300 hover:text-green-100 font-medium font-bold">
+                    My Store
+                  </Link>
+                )}
                 <Link href="/profile" className="text-white hover:text-gray-200 font-medium">
                   My Account
-                </Link>
-                <Link href="/profile/about" className="text-white hover:text-gray-200 font-medium">
-                  About
                 </Link>
                 {(session.user as any)?.role === 'admin' && (
                   <Link href="/admin/dashboard" className="text-yellow-300 hover:text-yellow-100 font-medium font-bold">
@@ -49,7 +67,7 @@ export function Navbar() {
             <Link href="/cart" className="relative text-white hover:text-gray-200">
               <ShoppingCart className="h-6 w-6" aria-label="View Cart" />
               <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                3
+                {items.length}
               </span>
             </Link>
             {session ? (

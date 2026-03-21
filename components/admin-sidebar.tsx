@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, TrendingUp, FileDown, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, TrendingUp, FileDown, Store, LogOut } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 
 export function AdminSidebar() {
@@ -14,7 +14,8 @@ export function AdminSidebar() {
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/clients', label: 'Clients', icon: Users },
     { href: '/admin/sales', label: 'Sales Report', icon: TrendingUp },
-    { href: '/admin/products', label: 'Products', icon: FileDown }
+    { href: '/admin/products', label: 'Products', icon: FileDown },
+    { href: '/admin/vendors', label: 'Vendors', icon: Store }
   ]
 
   return (

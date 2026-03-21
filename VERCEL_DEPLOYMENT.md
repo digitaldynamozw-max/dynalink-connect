@@ -34,11 +34,8 @@ The following environment variables need to be set in your Vercel project:
 3. **NEXTAUTH_URL** - Your Vercel deployment URL
    - Example: `https://dynalink-connect.vercel.app`
 
-4. **STRIPE_SECRET_KEY** - Your Stripe secret key
-   - Get from: https://dashboard.stripe.com/apikeys
-
-5. **NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY** - Your Stripe publishable key
-   - Get from: https://dashboard.stripe.com/apikeys
+4. **DATABASE_URL** - SQLite database path (optional for Vercel)
+   - Already configured for development
 
 ## Step 3: Deploy to Vercel
 
@@ -68,8 +65,7 @@ vercel --prod
 vercel env add DATABASE_URL
 vercel env add NEXTAUTH_SECRET
 vercel env add NEXTAUTH_URL
-vercel env add STRIPE_SECRET_KEY
-vercel env add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+# PayNow is built-in - no payment gateway env vars needed
 ```
 
 ### Using Vercel Dashboard:
@@ -112,7 +108,7 @@ npm run build && npx prisma migrate deploy
 - NEXTAUTH_URL must match your Vercel domain
 - Use `https://` prefix for NEXTAUTH_URL
 
-### Stripe Issues
+### PayNow Issues
 - Verify API keys are for the correct environment (test/live)
 - Update webhook URLs to point to Vercel domain
 

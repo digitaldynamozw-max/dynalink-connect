@@ -6,10 +6,9 @@ import { useCartStore } from '@/lib/store'
 
 interface Props {
   orderId?: string | null
-  sessionId?: string | null
 }
 
-export default function SuccessHandler({ orderId, sessionId }: Props) {
+export default function SuccessHandler({ orderId }: Props) {
   const router = useRouter()
   const clearCart = useCartStore(state => state.clearCart)
 
@@ -78,9 +77,7 @@ export default function SuccessHandler({ orderId, sessionId }: Props) {
                   Continue Shopping
                 </button>
               </div>
-              {sessionId && (
-                <p className="mt-6 text-sm text-gray-500">Stripe session: {sessionId}</p>
-              )}
+              <p className="mt-6 text-sm text-gray-500">Payment processed successfully</p>
             </>
           )}
 

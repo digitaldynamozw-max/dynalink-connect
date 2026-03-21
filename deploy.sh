@@ -60,8 +60,7 @@ echo -e "${BLUE}[Step 5/6]${NC} Environment Variables Required"
 echo -e "${YELLOW}Please have the following ready:${NC}"
 echo "  • DATABASE_URL (MySQL connection string)"
 echo "  • NEXTAUTH_SECRET (generated secure key)"
-echo "  • STRIPE_SECRET_KEY"
-echo "  • NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
+echo "  • DATABASE_URL (SQLite configured)"
 
 # Step 6: Deploy
 echo ""

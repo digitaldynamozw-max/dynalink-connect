@@ -10,6 +10,8 @@ interface Product {
   name: string
   description?: string
   price: number
+  salePrice?: number
+  onSale?: boolean
   image?: string
   category?: string
   stock: number
@@ -19,6 +21,8 @@ const initialForm = {
   name: '',
   description: '',
   price: 0,
+  salePrice: 0,
+  onSale: false,
   image: '',
   category: '',
   stock: 0
@@ -73,7 +77,7 @@ export default function ProductsPage() {
     setEditingId(null)
   }
 
-  const handleChange = (key: keyof typeof initialForm, value: string | number) => {
+  const handleChange = (key: keyof typeof initialForm, value: string | number | boolean) => {
     setForm(prev => ({ ...prev, [key]: value }))
   }
 
@@ -145,47 +149,88 @@ export default function ProductsPage() {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input
-              type="text"
-              placeholder="Product Name"
-              value={form.name}
-              onChange={(e) => handleChange('name', e.target.value)}
-              className="border rounded px-3 py-2"
-            />
-            <input
-              type="number"
-              placeholder="Price"
-              value={form.price}
-              onChange={(e) => handleChange('price', parseFloat(e.target.value))}
-              className="border rounded px-3 py-2"
-            />
-            <input
-              type="text"
-              placeholder="Category"
-              value={form.category}
-              onChange={(e) => handleChange('category', e.target.value)}
-              className="border rounded px-3 py-2"
-            />
-            <input
-              type="number"
-              placeholder="Stock"
-              value={form.stock}
-              onChange={(e) => handleChange('stock', parseInt(e.target.value))}
-              className="border rounded px-3 py-2"
-            />
-            <textarea
-              placeholder="Description"
-              value={form.description}
-              onChange={(e) => handleChange('description', e.target.value)}
-              className="border rounded px-3 py-2 col-span-2 h-20"
-            />
-            <input
-              type="text"
-              placeholder="Image URL"
-              value={form.image}
-              onChange={(e) => handleChange('image', e.target.value)}
-              className="border rounded px-3 py-2 col-span-2"
-            />
+            <div className="space-y-1">
+              <label className="block text-sm font-semibold text-gray-700">Product Name</label>
+              <input
+                type="text"
+                placeholder="Product Name"
+                value={form.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-semibold text-gray-700">Price</label>
+              <input
+                type="number"
+                placeholder="0.00"
+                value={form.price}
+                onChange={(e) => handleChange('price', parseFloat(e.target.value))}
+                className="w-full border rounded px-3 py-2"
+                step="0.01"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-semibold text-gray-700">Category</label>
+              <input
+                type="text"
+                placeholder="e.g., Electronics"
+                value={form.category}
+                onChange={(e) => handleChange('category', e.target.value)}
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-semibold text-gray-700">Stock Quantity</label>
+              <input
+                type="number"
+                placeholder="0"
+                value={form.stock}
+                onChange={(e) => handleChange('stock', parseInt(e.target.value))}
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-semibold text-gray-700">Sale Price (Optional)</label>
+              <input
+                type="number"
+                placeholder="0.00"
+                value={form.salePrice}
+                onChange={(e) => handleChange('salePrice', parseFloat(e.target.value))}
+                className="w-full border rounded px-3 py-2"
+                step="0.01"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.onSale}
+                  onChange={(e) => handleChange('onSale', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300"
+                />
+                Mark as On Sale
+              </label>
+            </div>
+            <div className="space-y-1 col-span-2">
+              <label className="block text-sm font-semibold text-gray-700">Description</label>
+              <textarea
+                placeholder="Enter product description"
+                value={form.description}
+                onChange={(e) => handleChange('description', e.target.value)}
+                className="w-full border rounded px-3 py-2 h-20"
+              />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <label className="block text-sm font-semibold text-gray-700">Image URL</label>
+              <input
+                type="text"
+                placeholder="https://example.com/image.jpg"
+                value={form.image}
+                onChange={(e) => handleChange('image', e.target.value)}
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
           </div>
 
           <div className="flex gap-2 mt-4">
@@ -240,12 +285,14 @@ export default function ProductsPage() {
                       handleChange('stock', product.stock)
                       setEditingId(product.id)
                     }}
+                    title="Edit product"
                     className="text-blue-600 hover:text-blue-800"
                   >
                     <Edit className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => deleteProduct(product.id)}
+                    title="Delete product"
                     className="text-red-600 hover:text-red-800"
                   >
                     <Trash2 className="h-4 w-4" />

@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -22,14 +22,40 @@ model User {
   accountBalance   Float        @default(0)
   profilePicture   String?
   deliveryAddress  String?
+  customerZipCode  String?
   firstName        String?
   lastName         String?
+  
+  // Vendor fields
+  isVendor         Boolean      @default(false)
+  vendorName       String?      @unique
+  vendorDescription String?
+  vendorImage      String?
+  storeAddress     String?
+  storeCity        String?
+  storeState       String?
+  storeZipCode     String?
+  latitude         Float?
+  longitude        Float?
+  vendorPhoneNumber String?
+  vendorVerified   Boolean      @default(false)
+  vendorJoinedAt   DateTime?
+  commissionRate   Float        @default(10)
+  
+  // Relations
   orders           Order[]
   ratings          Rating[]
+  reviews          Review[]
+  wishlistItems    WishlistItem[]
   promoCodes       PromoCode[]
   referralsCreated Referral[]   @relation("referrer")
   referralsReceived Referral[]  @relation("referred")
   supportTickets   SupportTicket[]
+  products         Product[]
+  payouts          VendorPayout[]
+  deliveryZones    DeliveryZone[] @relation("vendorDeliveryZones")
+  orderItems       OrderItem[]
+  
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 }
@@ -39,26 +65,44 @@ model Product {
   name        String
   description String?
   price       Float
+  salePrice   Float?
+  onSale      Boolean    @default(false)
   image       String?
   category    String?
   stock       Int        @default(0)
   salesCount  Int        @default(0)
   rating      Float      @default(0)
+  averageRating Float    @default(0)
+  reviewCount Int        @default(0)
+  
+  // Vendor relationship (optional for backward compatibility)
+  vendorId    String?
+  vendor      User?      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  
   orderItems  OrderItem[]
   ratings     Rating[]
+  reviews     Review[]
+  wishlistItems WishlistItem[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+  
+  @@index([vendorId])
 }
 
 
 model Order {
   id        String      @id @default(cuid())
   userId    String
-  user      User        @relation(fields: [userId], references: [id])
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items     OrderItem[]
   total     Float
   status    String      @default("pending")
-  stripeId  String?     @unique
+  payNowRef String?     @unique
+  
+  // Delivery tracking
+  deliveryAddress String?
+  deliveryFee Float     @default(0)
+  
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 }
@@ -69,8 +113,15 @@ model OrderItem {
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
   product   Product @relation(fields: [productId], references: [id])
+  vendorId  String?
+  vendor    User?   @relation(fields: [vendorId], references: [id])
   quantity  Int
   price     Float
+  status    String  @default("pending")
+  deliveryFee Float @default(0)
+  vendorEarnings Float @default(0)
+  
+  @@index([vendorId])
 }
 
 model Rating {
@@ -83,6 +134,35 @@ model Rating {
   comment   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      // 1-5 stars
+  title     String
+  comment   String
+  helpful   Int      @default(0)
+  notHelpful Int     @default(0)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  addedAt   DateTime @default(now())
 
   @@unique([userId, productId])
 }
@@ -124,4 +204,39 @@ model SupportTicket {
   response  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model DeliveryZone {
+  id        String  @id @default(cuid())
+  vendorId  String
+  vendor    User    @relation("vendorDeliveryZones", fields: [vendorId], references: [id], onDelete: Cascade)
+  zipCode   String
+  city      String?
+  state     String?
+  address   String?
+  baseFee   Float
+  perKmFee  Float   @default(0)
+  maxDistance Float @default(50)
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([vendorId, zipCode])
+  @@index([vendorId])
+}
+
+model VendorPayout {
+  id        String  @id @default(cuid())
+  vendorId  String
+  vendor    User    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  amount    Float
+  status    String  @default("pending")
+  ordersIncluded Int @default(0)
+  paymentMethod String?
+  transactionId String?
+  processedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([vendorId])
 }

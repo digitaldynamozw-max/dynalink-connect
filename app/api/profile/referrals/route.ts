@@ -24,11 +24,11 @@ export async function GET() {
       orderBy: { createdAt: 'desc' }
     })
 
-    const completed = referrals.filter(r => r.status === 'completed').length
-    const pending = referrals.filter(r => r.status === 'pending').length
+    const completed = referrals.filter((r: any) => r.status === 'completed').length
+    const pending = referrals.filter((r: any) => r.status === 'pending').length
     const totalRewards = referrals
-      .filter(r => r.status === 'completed')
-      .reduce((sum, r) => sum + r.rewardAmount, 0)
+      .filter((r: any) => r.status === 'completed')
+      .reduce((sum: number, r: any) => sum + r.rewardAmount, 0)
 
     return NextResponse.json({
       referrals,

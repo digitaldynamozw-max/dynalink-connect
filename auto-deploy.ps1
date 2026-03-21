@@ -152,8 +152,7 @@ Write-Host "Required environment variables:" -ForegroundColor Yellow
 Write-Host "  1. DATABASE_URL" -ForegroundColor Gray
 Write-Host "  2. NEXTAUTH_SECRET" -ForegroundColor Gray
 Write-Host "  3. NEXTAUTH_URL" -ForegroundColor Gray
-Write-Host "  4. STRIPE_SECRET_KEY" -ForegroundColor Gray
-Write-Host "  5. NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" -ForegroundColor Gray
+Write-Host "  4. DATABASE_URL (SQLite configured)" -ForegroundColor Gray
 
 if ($Interactive) {
     Write-Host ""

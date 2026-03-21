@@ -22,13 +22,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, description, price, image, category, stock } = body
+    const { name, description, price, salePrice, onSale, image, category, stock } = body
 
     const product = await prisma.product.create({
       data: {
         name,
         description,
         price: parseFloat(price),
+        salePrice: salePrice ? parseFloat(salePrice) : null,
+        onSale: onSale || false,
         image,
         category,
         stock: parseInt(stock)

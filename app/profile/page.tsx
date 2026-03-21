@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   User,
@@ -34,7 +34,7 @@ interface Stats {
   referrals: number
 }
 
-export default function Profile() {
+function ProfileContent() {
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password'>(
@@ -74,8 +74,21 @@ export default function Profile() {
     const fetchData = async () => {
       try {
         // Fetch user profile
-        const profileRes = await fetch('/api/profile')
-        if (!profileRes.ok) throw new Error('Failed to fetch profile')
+        const profileRes = await fetch('/api/profile', {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        if (!profileRes.ok) {
+          const errorData = await profileRes.json().catch(() => ({}))
+          console.error('Profile API error:', profileRes.status, errorData)
+          if (profileRes.status === 401) {
+            throw new Error('Your session has expired. Please log in again.')
+          }
+          throw new Error(`Failed to fetch profile: ${profileRes.status}`)
+        }
         const profileData = await profileRes.json()
         setUser(profileData)
         setFormData(profileData)
@@ -83,9 +96,9 @@ export default function Profile() {
 
         // Fetch stats
         const [ordersRes, promoRes, referralsRes] = await Promise.all([
-          fetch('/api/orders'),
-          fetch('/api/profile/promo-codes'),
-          fetch('/api/profile/referrals')
+          fetch('/api/orders', { credentials: 'include' }),
+          fetch('/api/profile/promo-codes', { credentials: 'include' }),
+          fetch('/api/profile/referrals', { credentials: 'include' })
         ])
 
         let orderCount = 0
@@ -136,6 +149,7 @@ export default function Profile() {
         setSaving(true)
         const res = await fetch('/api/profile/picture', {
           method: 'POST',
+          credentials: 'include',
           body: formDataObj
         })
         if (!res.ok) throw new Error('Failed to upload picture')
@@ -157,6 +171,7 @@ export default function Profile() {
       setSaving(true)
       const res = await fetch('/api/profile', {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           firstName: formData.firstName,
@@ -189,6 +204,7 @@ export default function Profile() {
       setSaving(true)
       const res = await fetch('/api/profile/password', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(passwordData)
       })
@@ -547,5 +563,13 @@ export default function Profile() {
         </form>
       )}
     </div>
+  )
+}
+
+export default function Profile() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <ProfileContent />
+    </Suspense>
   )
 }

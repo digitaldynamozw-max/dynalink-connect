@@ -6,7 +6,7 @@
 - [ ] Push to remote: `git push origin main`
 - [ ] Have your Vercel account ready
 - [ ] Have your MySQL database connection string ready
-- [ ] Have your Stripe API keys ready
+- [ ] Database is configured (SQLite)
 
 ## Environment Variables Needed
 
@@ -47,8 +47,7 @@ vercel
 vercel env add DATABASE_URL
 vercel env add NEXTAUTH_SECRET
 vercel env add NEXTAUTH_URL
-vercel env add STRIPE_SECRET_KEY
-vercel env add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+# PayNow is built-in - no additional env vars needed for Vercel
 
 # Option B: Via Vercel Dashboard
 # 1. Go to your project settings

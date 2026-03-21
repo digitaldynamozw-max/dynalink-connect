@@ -55,8 +55,7 @@ Write-Host "[Step 5/6] Environment Variables Required" -ForegroundColor Cyan
 Write-Host "Please have the following ready:" -ForegroundColor Yellow
 Write-Host "  • DATABASE_URL (MySQL connection string)"
 Write-Host "  • NEXTAUTH_SECRET (generated secure key)"
-Write-Host "  • STRIPE_SECRET_KEY"
-Write-Host "  • NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
+Write-Host "  • DATABASE_URL (SQLite configured)"
 
 # Step 6: Deploy
 Write-Host ""

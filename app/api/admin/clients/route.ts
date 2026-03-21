@@ -9,12 +9,16 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Fetch both regular users and vendors
     const clients = await prisma.user.findMany({
-      where: { role: 'user' },
+      where: {
+        role: { in: ['user', 'vendor'] }
+      },
       select: {
         id: true,
         email: true,
         name: true,
+        vendorName: true,
         role: true,
         accountBalance: true,
         isActive: true,
@@ -23,10 +27,11 @@ export async function GET() {
       orderBy: { createdAt: 'desc' }
     })
 
+    console.log('Fetched clients:', clients.length)
     return NextResponse.json(clients)
   } catch (error) {
     console.error('Clients fetch error:', error)
-    return NextResponse.json({ error: 'Failed to fetch clients' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch clients', details: String(error) }, { status: 500 })
   }
 }
 

@@ -7,16 +7,22 @@ export async function GET() {
   try {
     const session = (await auth()) as any
     
+    if (!session) {
+      console.error('No session found in profile GET')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    
     // Check for user ID or email
     const userId = session?.user?.id
     const userEmail = session?.user?.email
     
     if (!userId && !userEmail) {
+      console.error('No user ID or email in session:', { userId, userEmail })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const user = await prisma.user.findUnique({
-      where: userId ? { id: userId } : { email: userEmail },
+      where: userId ? { id: userId } : { email: userEmail as string },
       select: {
         id: true,
         email: true,
@@ -33,13 +39,16 @@ export async function GET() {
     })
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      console.error('User not found in database, but has valid session:', { userId, userEmail })
+      // User has a valid session but doesn't exist in database
+      // This can happen after database reset, return 401 to signal session is invalid
+      return NextResponse.json({ error: 'User session invalid' }, { status: 401 })
     }
 
     return NextResponse.json(user)
   } catch (error) {
     console.error('Profile fetch error:', error)
-    return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch profile', details: String(error) }, { status: 500 })
   }
 }
 

@@ -59,8 +59,7 @@ After first deployment:
 vercel env add DATABASE_URL "mysql://..."
 vercel env add NEXTAUTH_SECRET "your-secret-key"
 vercel env add NEXTAUTH_URL "https://your-app.vercel.app"
-vercel env add STRIPE_SECRET_KEY "sk_test_..."
-vercel env add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY "pk_test_..."
+# PayNow is built-in - no additional env setup needed for Vercel
 ```
 
 ### Via Dashboard

@@ -105,8 +105,8 @@ In Vercel Dashboard → Settings → Environment Variables:
 DATABASE_URL = mysql://user:password@host:3306/dynalink_connect
 NEXTAUTH_SECRET = [generated secure key]
 NEXTAUTH_URL = https://[your-app].vercel.app
-STRIPE_SECRET_KEY = sk_test_...
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = pk_test_...
+# PayNow is configured and ready to use
+# No additional payment gateway setup needed
 ```
 
 ### Step 6: Run Database Migrations
@@ -126,8 +126,7 @@ npx prisma migrate deploy
 | `DATABASE_URL` | Production database connection | `mysql://admin:pass@db.planetscale.com/dynalink` |
 | `NEXTAUTH_SECRET` | Session encryption key | `3eH7+j9kL2mN4pQ6...` |
 | `NEXTAUTH_URL` | Your Vercel domain | `https://dynalink-connect.vercel.app` |
-| `STRIPE_SECRET_KEY` | Stripe API key (secret) | `sk_test_51HZ...` |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe API key (public) | `pk_test_51HZ...` |
+| `DATABASE_URL` | SQLite database path | `file:./dev.db` |
 
 ---
 
@@ -166,7 +165,7 @@ After deployment, verify:
 - [ ] Can login with admin@example.com / password
 - [ ] Products display correctly
 - [ ] Shopping cart works
-- [ ] Stripe checkout loads
+- [ ] PayNow checkout modal appears
 - [ ] Admin dashboard accessible
 - [ ] No errors in Vercel logs
 
@@ -227,7 +226,7 @@ dynalink_connect/
 - **Next.js Deployment**: https://nextjs.org/docs/app/building-your-application/deploying/vercel
 - **Prisma DB**: https://www.prisma.io/docs/guides/deployment
 - **NextAuth.js**: https://next-auth.js.org/deployment
-- **Stripe**: https://stripe.com/docs
+- **PayNow**: Integrated payment system - no external docs needed
 
 ---
 

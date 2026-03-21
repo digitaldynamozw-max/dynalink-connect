@@ -18,7 +18,7 @@ $envVars = @{
     "DATABASE_URL" = "Your MySQL connection string (e.g., mysql://user:pass@host:3306/db)"
     "NEXTAUTH_SECRET" = "Generate with: openssl rand -base64 32"
     "NEXTAUTH_URL" = "Your Vercel app URL (e.g., https://dynalink-connect.vercel.app)"
-    "STRIPE_SECRET_KEY" = "From: https://dashboard.stripe.com/apikeys (Secret Key)"
+    "DATABASE_URL" = "file:./dev.db (SQLite database)"
     "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" = "From: https://dashboard.stripe.com/apikeys (Publishable Key)"
 }
 

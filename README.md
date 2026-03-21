@@ -4,11 +4,30 @@ A modern e-commerce store built with Next.js, similar to WooCommerce.
 
 ## Features
 
-- Product catalog
-- Shopping cart
-- User authentication
-- Payment integration with Stripe
-- Admin dashboard
+### Core Features
+- Product catalog with search and filtering
+- Shopping cart with Zustand state management
+- User authentication with NextAuth.js
+- Payment integration with PayNow payment gateway
+- Admin dashboard with comprehensive management tools
+- Multi-vendor marketplace with storefronts
+- Address-based delivery fee calculation
+- User profiles with settings, promo codes, and referrals
+
+### Recent Enhancements (v2.0)
+- **Product Image Upload**: Vendors can upload product images during creation/editing
+- **Product Management Pages**: Dedicated vendor dashboard for product CRUD operations
+- **Address-Based Delivery**: Improved delivery system using full address instead of ZIP codes
+- **Enhanced Hero Section**: Modern grid layout with sample images and prominent CTAs
+- **Improved UI/UX**: Better form handling, image previews, and loading states
+
+### Vendor Features
+- Vendor registration and storefront creation
+- Product management with image hosting
+- Order management and tracking
+- Delivery zone configuration
+- Payout tracking
+- Sales analytics
 
 ## Getting Started
 
