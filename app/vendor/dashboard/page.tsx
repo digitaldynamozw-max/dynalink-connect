@@ -603,7 +603,7 @@ function PayoutsTab() {
                 {payoutData.payouts.map((payout) => (
                   <tr key={payout.id} className="border-t border-gray-200">
                     <td className="px-6 py-4 text-sm">
-                      {new Date(payout.createdAt).toLocaleDateString()}
+                      {payout.date}
                     </td>
                     <td className="px-6 py-4 font-semibold text-green-600">
                       ${payout.amount.toFixed(2)}
