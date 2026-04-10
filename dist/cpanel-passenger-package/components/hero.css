@@ -1,0 +1,7 @@
+.hero-background {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-image: url('https://images.unsplash.com/photo-1523805009348-498fa9facb8a?auto=format&fit=crop&w=1600&q=80');
+}

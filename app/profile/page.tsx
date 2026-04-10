@@ -1,19 +1,27 @@
 'use client'
 
-import React, { Suspense, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
-  User,
-  Wallet,
-  ShoppingBag,
-  Percent,
-  Users,
-  Upload,
+  AlertCircle,
   Eye,
   EyeOff,
-  Check,
-  AlertCircle
+  Lock,
+  MapPin,
+  Percent,
+  ShoppingBag,
+  Upload,
+  User,
+  Users,
+  Wallet,
 } from 'lucide-react'
+import {
+  ProfileEmptyState,
+  ProfileMessage,
+  ProfilePageShell,
+  ProfilePanel,
+  ProfileStatCard,
+} from '@/components/profile-ui'
 
 interface UserProfile {
   id: string
@@ -25,6 +33,7 @@ interface UserProfile {
   accountBalance: number
   mobileNumber: string | null
   deliveryAddress: string | null
+  language?: string | null
   createdAt: string
 }
 
@@ -35,18 +44,13 @@ interface Stats {
 }
 
 function ProfileContent() {
-  const searchParams = useSearchParams()
-  const tabParam = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password'>(
-    (tabParam as any) || 'overview'
-  )
-
   const [user, setUser] = useState<UserProfile | null>(null)
   const [stats, setStats] = useState<Stats>({ orders: 0, promoCodes: 0, referrals: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
   const [profileImage, setProfileImage] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -61,44 +65,41 @@ function ProfileContent() {
     accountBalance: 0,
     mobileNumber: null,
     deliveryAddress: null,
-    createdAt: ''
+    language: 'en',
+    createdAt: '',
   })
 
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
-    confirmPassword: ''
+    confirmPassword: '',
   })
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch user profile
         const profileRes = await fetch('/api/profile', {
           method: 'GET',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          headers: { 'Content-Type': 'application/json' },
         })
+
         if (!profileRes.ok) {
-          const errorData = await profileRes.json().catch(() => ({}))
-          console.error('Profile API error:', profileRes.status, errorData)
           if (profileRes.status === 401) {
-            throw new Error('Your session has expired. Please log in again.')
+            throw new Error('Your session has expired. Please sign in again.')
           }
           throw new Error(`Failed to fetch profile: ${profileRes.status}`)
         }
+
         const profileData = await profileRes.json()
         setUser(profileData)
         setFormData(profileData)
         setProfileImage(profileData.profilePicture)
 
-        // Fetch stats
         const [ordersRes, promoRes, referralsRes] = await Promise.all([
           fetch('/api/orders', { credentials: 'include' }),
           fetch('/api/profile/promo-codes', { credentials: 'include' }),
-          fetch('/api/profile/referrals', { credentials: 'include' })
+          fetch('/api/profile/referrals', { credentials: 'include' }),
         ])
 
         let orderCount = 0
@@ -107,7 +108,7 @@ function ProfileContent() {
 
         if (ordersRes.ok) {
           const ordersData = await ordersRes.json()
-          orderCount = Array.isArray(ordersData) ? ordersData.length : (ordersData.length || 0)
+          orderCount = Array.isArray(ordersData) ? ordersData.length : ordersData.length || 0
         }
         if (promoRes.ok) {
           const promoData = await promoRes.json()
@@ -121,54 +122,53 @@ function ProfileContent() {
         setStats({
           orders: orderCount,
           promoCodes: promoCount,
-          referrals: referralCount
+          referrals: referralCount,
         })
       } catch (err) {
-        console.error('Error fetching profile:', err)
-        setError('Failed to load profile data')
+        setError(err instanceof Error ? err.message : 'Failed to load profile data')
       } finally {
         setLoading(false)
       }
     }
 
-    fetchData()
+    void fetchData()
   }, [])
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setMessage({ type: 'error', text: 'File size must be less than 5MB' })
-        return
-      }
+    if (!file) return
 
-      const formDataObj = new FormData()
-      formDataObj.append('file', file)
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'File size must be less than 5MB.' })
+      return
+    }
 
-      try {
-        setSaving(true)
-        const res = await fetch('/api/profile/picture', {
-          method: 'POST',
-          credentials: 'include',
-          body: formDataObj
-        })
-        if (!res.ok) throw new Error('Failed to upload picture')
-        const data = await res.json()
-        setProfileImage(data.profilePicture)
-        setFormData({ ...formData, profilePicture: data.profilePicture })
-        setMessage({ type: 'success', text: 'Profile picture updated' })
-      } catch (err) {
-        setMessage({ type: 'error', text: 'Failed to upload picture' })
-      } finally {
-        setSaving(false)
-      }
+    const formDataObj = new FormData()
+    formDataObj.append('file', file)
+
+    try {
+      setSavingProfile(true)
+      const res = await fetch('/api/profile/picture', {
+        method: 'POST',
+        credentials: 'include',
+        body: formDataObj,
+      })
+      if (!res.ok) throw new Error('Failed to upload picture')
+      const data = await res.json()
+      setProfileImage(data.profilePicture)
+      setFormData((current) => ({ ...current, profilePicture: data.profilePicture }))
+      setMessage({ type: 'success', text: 'Profile picture updated.' })
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to upload picture.' })
+    } finally {
+      setSavingProfile(false)
     }
   }
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      setSaving(true)
+      setSavingProfile(true)
       const res = await fetch('/api/profile', {
         method: 'PUT',
         credentials: 'include',
@@ -177,398 +177,337 @@ function ProfileContent() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           mobileNumber: formData.mobileNumber,
-          deliveryAddress: formData.deliveryAddress
-        })
+          deliveryAddress: formData.deliveryAddress,
+          language: formData.language,
+        }),
       })
       if (!res.ok) throw new Error('Failed to update profile')
-      setMessage({ type: 'success', text: 'Profile updated successfully' })
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to update profile' })
+      const updated = await res.json()
+      setUser((current) => (current ? { ...current, ...updated } : updated))
+      setFormData((current) => ({ ...current, ...updated }))
+      setMessage({ type: 'success', text: 'Profile updated successfully.' })
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to update profile.' })
     } finally {
-      setSaving(false)
+      setSavingProfile(false)
     }
   }
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setMessage({ type: 'error', text: 'Passwords do not match' })
+      setMessage({ type: 'error', text: 'Passwords do not match.' })
       return
     }
     if (passwordData.newPassword.length < 6) {
-      setMessage({ type: 'error', text: 'Password must be at least 6 characters' })
+      setMessage({ type: 'error', text: 'Password must be at least 6 characters.' })
       return
     }
 
     try {
-      setSaving(true)
+      setSavingPassword(true)
       const res = await fetch('/api/profile/password', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(passwordData)
+        body: JSON.stringify(passwordData),
       })
       if (!res.ok) throw new Error('Failed to change password')
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
-      setMessage({ type: 'success', text: 'Password changed successfully' })
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to change password' })
+      setMessage({ type: 'success', text: 'Password changed successfully.' })
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to change password.' })
     } finally {
-      setSaving(false)
+      setSavingPassword(false)
     }
   }
 
+  const memberDate = useMemo(
+    () =>
+      user
+        ? new Date(user.createdAt).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+          })
+        : '',
+    [user]
+  )
+
   if (loading) {
-    return (
-      <div className="flex items-center justify-center p-6 min-h-screen">
-        <div className="animate-spin">
-          <div className="w-12 h-12 border-4 border-blue-300 border-t-blue-600 rounded-full"></div>
-        </div>
-      </div>
-    )
+    return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Loading account...</div>
   }
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center p-6 min-h-screen">
-        <div className="text-red-600">{error || 'User not found'}</div>
+      <div className="min-h-[60vh]">
+        <ProfileEmptyState title="Account unavailable" description={error || 'We could not load your account right now.'} />
       </div>
     )
   }
 
-  const memberDate = new Date(user.createdAt).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long'
-  })
-
   return (
-    <div className="flex flex-col gap-8 p-6">
-      {/* Tab Navigation */}
-      <div className="flex gap-4 border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`pb-3 px-4 font-medium transition ${
-            activeTab === 'overview'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
+    <ProfilePageShell
+      eyebrow="Account Overview"
+      title="My Account"
+      description="Manage your profile, password, delivery details, and account performance from one refreshed workspace."
+      actions={
+        <Link
+          href="/orders"
+          className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
         >
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`pb-3 px-4 font-medium transition ${
-            activeTab === 'profile'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Edit Profile
-        </button>
-        <button
-          onClick={() => setActiveTab('password')}
-          className={`pb-3 px-4 font-medium transition ${
-            activeTab === 'password'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Change Password
-        </button>
+          <ShoppingBag className="h-4 w-4" />
+          View Orders
+        </Link>
+      }
+    >
+      {message ? <ProfileMessage type={message.type} text={message.text} /> : null}
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+        <ProfileStatCard
+          label="Account Balance"
+          value={`$${user.accountBalance.toFixed(2)}`}
+          helper="Available for marketplace purchases."
+          accent="orange"
+          icon={<Wallet className="h-5 w-5" />}
+        />
+        <ProfileStatCard
+          label="Orders"
+          value={stats.orders}
+          helper="Orders tracked in your account history."
+          accent="blue"
+          icon={<ShoppingBag className="h-5 w-5" />}
+        />
+        <ProfileStatCard
+          label="Promo Codes"
+          value={stats.promoCodes}
+          helper="Active discounts ready for checkout."
+          accent="emerald"
+          icon={<Percent className="h-5 w-5" />}
+        />
+        <ProfileStatCard
+          label="Referrals"
+          value={stats.referrals}
+          helper="Friends who completed your invite flow."
+          accent="violet"
+          icon={<Users className="h-5 w-5" />}
+        />
       </div>
 
-      {message && (
-        <div
-          className={`flex items-center gap-2 p-4 rounded-lg ${
-            message.type === 'success'
-              ? 'bg-green-50 text-green-800 border border-green-200'
-              : 'bg-red-50 text-red-800 border border-red-200'
-          }`}
-        >
-          {message.type === 'success' ? (
-            <Check className="w-5 h-5" />
-          ) : (
-            <AlertCircle className="w-5 h-5" />
-          )}
-          {message.text}
-        </div>
-      )}
-
-      {/* Overview Tab */}
-      {activeTab === 'overview' && (
-        <div className="space-y-8">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900">My Profile</h1>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Profile Card */}
-            <div className="bg-white p-8 rounded-xl shadow-lg">
-              <div className="flex items-center gap-4 mb-6">
-                {profileImage ? (
-                  <img
-                    src={profileImage}
-                    alt={user.name || 'Profile'}
-                    className="w-16 h-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center">
-                    <User className="w-8 h-8 text-white" />
-                  </div>
-                )}
-                <div>
-                  <p className="text-sm text-gray-500">Welcome back</p>
-                  <p className="text-2xl font-bold text-gray-900">{user.name || 'User'}</p>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.95fr_1.25fr]">
+        <ProfilePanel className="overflow-hidden">
+          <div className="rounded-[1.15rem] bg-[linear-gradient(135deg,#0f172a,#1e293b,#334155)] p-4 text-white">
+            <div className="flex items-center gap-3">
+              {profileImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={profileImage} alt={user.name || 'Profile'} className="h-16 w-16 rounded-2xl object-cover ring-2 ring-white/10" />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
+                  <User className="h-7 w-7" />
                 </div>
-              </div>
-              <div className="border-t pt-6 space-y-4">
-                <div>
-                  <p className="text-sm text-gray-500">Email Address</p>
-                  <p className="text-lg font-medium text-gray-900">{user.email}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Member Since</p>
-                  <p className="text-lg font-medium text-gray-900">{memberDate}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Account Balance Card */}
-            <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-8 rounded-xl shadow-lg text-white">
-              <div className="flex items-start justify-between mb-8">
-                <div>
-                  <p className="text-blue-100 mb-2">Account Balance</p>
-                  <p className="text-5xl font-bold">${user.accountBalance.toFixed(2)}</p>
-                </div>
-                <Wallet className="w-12 h-12 text-blue-200 opacity-50" />
-              </div>
-              <p className="text-blue-100">Available for purchases and withdrawals</p>
-            </div>
-          </div>
-
-          {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <a
-              href="/orders"
-              className="bg-white p-6 rounded-xl shadow hover:shadow-lg transition text-center"
-            >
-              <ShoppingBag className="w-8 h-8 text-blue-600 mx-auto mb-3" />
-              <p className="text-3xl font-bold text-blue-600">{stats.orders}</p>
-              <p className="text-sm text-gray-600">Orders</p>
-            </a>
-            <a
-              href="/profile/promocodes"
-              className="bg-white p-6 rounded-xl shadow hover:shadow-lg transition text-center"
-            >
-              <Percent className="w-8 h-8 text-green-600 mx-auto mb-3" />
-              <p className="text-3xl font-bold text-green-600">{stats.promoCodes}</p>
-              <p className="text-sm text-gray-600">Promo Codes</p>
-            </a>
-            <a
-              href="/profile/invite-friends"
-              className="bg-white p-6 rounded-xl shadow hover:shadow-lg transition text-center"
-            >
-              <Users className="w-8 h-8 text-purple-600 mx-auto mb-3" />
-              <p className="text-3xl font-bold text-purple-600">{stats.referrals}</p>
-              <p className="text-sm text-gray-600">Referrals</p>
-            </a>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Profile Tab */}
-      {activeTab === 'profile' && (
-        <form onSubmit={handleProfileSubmit} className="space-y-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Profile Picture */}
-            <div className="lg:col-span-1">
-              <div className="bg-white rounded-xl shadow-lg p-6 sticky top-6">
-                <h3 className="text-lg font-semibold mb-4">Profile Picture</h3>
-                <div className="w-full h-48 bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg flex items-center justify-center mb-4 overflow-hidden">
-                  {profileImage ? (
-                    <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="text-white text-center">
-                      <div className="text-4xl mb-2">📷</div>
-                    </div>
-                  )}
-                </div>
-                <label className="block cursor-pointer">
-                  <div className="flex items-center justify-center gap-2 w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">
-                    <Upload className="w-4 h-4" />
-                    {saving ? 'Uploading...' : 'Upload Picture'}
-                  </div>
-                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                </label>
-              </div>
-            </div>
-
-            {/* Form Fields */}
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-8 space-y-6">
+              )}
               <div>
-                <label htmlFor="firstName" className="block text-sm font-semibold mb-2">
-                  First Name
-                </label>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-300">Welcome back</p>
+                <h2 className="mt-1 text-xl font-black">{user.name || 'DynaLink customer'}</h2>
+                <p className="mt-1 text-xs text-slate-300">{user.email}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <div className="rounded-[1rem] bg-slate-50 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Member Since</p>
+              <p className="mt-1.5 text-base font-semibold text-slate-950">{memberDate}</p>
+            </div>
+            <div className="rounded-[1rem] bg-slate-50 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Language</p>
+              <p className="mt-1.5 text-base font-semibold text-slate-950">
+                {formData.language === 'sn' ? 'Shona' : formData.language === 'nd' ? 'Ndebele' : 'English'}
+              </p>
+            </div>
+            <div className="rounded-[1rem] bg-slate-50 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Saved Delivery Address</p>
+              <div className="mt-1.5 flex items-start gap-2 text-slate-700">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                <p className="text-xs leading-5">{user.deliveryAddress || 'No delivery address saved yet.'}</p>
+              </div>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3.5 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100">
+              <Upload className="h-4 w-4" />
+              {savingProfile ? 'Uploading...' : 'Upload picture'}
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+            </label>
+          </div>
+        </ProfilePanel>
+
+        <div className="space-y-6">
+          <ProfilePanel title="Profile Details" description="Update the personal details customers and delivery flows depend on.">
+            <form onSubmit={handleProfileSubmit} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">First Name</span>
                 <input
                   type="text"
-                  id="firstName"
                   value={formData.firstName || ''}
                   onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
                 />
-              </div>
-
-              <div>
-                <label htmlFor="lastName" className="block text-sm font-semibold mb-2">
-                  Last Name
-                </label>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Last Name</span>
                 <input
                   type="text"
-                  id="lastName"
                   value={formData.lastName || ''}
                   onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
                 />
-              </div>
-
-              <div>
-                <label htmlFor="email" className="block text-sm font-semibold mb-2">
-                  Email (Cannot be changed)
-                </label>
+              </label>
+              <label className="space-y-1.5 md:col-span-2">
+                <span className="text-xs font-semibold text-slate-700">Email Address</span>
                 <input
                   type="email"
-                  id="email"
                   value={formData.email}
                   disabled
-                  className="w-full px-4 py-3 border rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                  className="w-full cursor-not-allowed rounded-[1rem] border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-500"
                 />
-              </div>
-
-              <div>
-                <label htmlFor="phone" className="block text-sm font-semibold mb-2">
-                  Phone Number
-                </label>
+              </label>
+              <label className="space-y-1.5 md:col-span-2">
+                <span className="text-xs font-semibold text-slate-700">Phone Number</span>
                 <input
                   type="tel"
-                  id="phone"
                   value={formData.mobileNumber || ''}
                   onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
                 />
-              </div>
-
-              <div>
-                <label htmlFor="address" className="block text-sm font-semibold mb-2">
-                  Delivery Address
-                </label>
+              </label>
+              <label className="space-y-1.5 md:col-span-2">
+                <span className="text-xs font-semibold text-slate-700">Language Preference</span>
+                <select
+                  value={formData.language || 'en'}
+                  onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
+                >
+                  <option value="en">English</option>
+                  <option value="sn">Shona</option>
+                  <option value="nd">Ndebele</option>
+                </select>
+              </label>
+              <label className="space-y-1.5 md:col-span-2">
+                <span className="text-xs font-semibold text-slate-700">Delivery Address</span>
                 <textarea
-                  id="address"
                   value={formData.deliveryAddress || ''}
                   onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                  rows={4}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
                 />
-              </div>
-
-              <div className="flex gap-4 pt-4">
+              </label>
+              <div className="md:col-span-2">
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold disabled:opacity-50"
+                  disabled={savingProfile}
+                  className="rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-60"
                 >
-                  {saving ? 'Saving...' : 'Save Changes'}
+                  {savingProfile ? 'Saving...' : 'Save profile changes'}
                 </button>
               </div>
+            </form>
+          </ProfilePanel>
+
+          <ProfilePanel title="Account Settings" description="Jump straight into the other live settings areas tied to your account.">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Link href="/profile/notifications" className="rounded-[1rem] border border-slate-200 bg-slate-50 p-3 transition hover:border-slate-300 hover:bg-white">
+                <p className="text-sm font-semibold text-slate-900">Notifications</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Choose delivery alerts and receipt channels.</p>
+              </Link>
+              <Link href="/profile/promocodes" className="rounded-[1rem] border border-slate-200 bg-slate-50 p-3 transition hover:border-slate-300 hover:bg-white">
+                <p className="text-sm font-semibold text-slate-900">Promo Codes</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Review active discounts linked to your account.</p>
+              </Link>
+              <Link href="/profile/support" className="rounded-[1rem] border border-slate-200 bg-slate-50 p-3 transition hover:border-slate-300 hover:bg-white">
+                <p className="text-sm font-semibold text-slate-900">Support</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Submit tickets and review support activity.</p>
+              </Link>
             </div>
-          </div>
-        </form>
-      )}
+          </ProfilePanel>
 
-      {/* Password Tab */}
-      {activeTab === 'password' && (
-        <form onSubmit={handlePasswordSubmit} className="max-w-2xl">
-          <div className="bg-white rounded-xl shadow-lg p-8 space-y-6">
-            <h3 className="text-lg font-semibold">Change Password</h3>
-
-            <div>
-              <label htmlFor="currentPassword" className="block text-sm font-semibold mb-2">
-                Current Password
-              </label>
-              <input
-                type="password"
-                id="currentPassword"
-                value={passwordData.currentPassword}
-                onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-                required
-                className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="newPassword" className="block text-sm font-semibold mb-2">
-                New Password
-              </label>
-              <div className="relative">
+          <ProfilePanel title="Security" description="Change your password and keep your account protected.">
+            <form onSubmit={handlePasswordSubmit} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="space-y-1.5 md:col-span-2">
+                <span className="text-xs font-semibold text-slate-700">Current Password</span>
                 <input
-                  type={showPassword ? 'text' : 'password'}
-                  id="newPassword"
-                  value={passwordData.newPassword}
-                  onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                  type="password"
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
                   required
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-gray-400"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-semibold mb-2">
-                Confirm Password
               </label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  id="confirmPassword"
-                  value={passwordData.confirmPassword}
-                  onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                  required
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
-                />
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">New Password</span>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordData.newPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                    required
+                    className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 pr-10 text-sm outline-none transition focus:border-orange-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((current) => !current)}
+                    className="absolute right-3 top-2.5 text-slate-400"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Confirm Password</span>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={passwordData.confirmPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                    required
+                    className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 pr-10 text-sm outline-none transition focus:border-orange-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((current) => !current)}
+                    className="absolute right-3 top-2.5 text-slate-400"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+              </label>
+              <div className="md:col-span-2 flex flex-wrap items-center gap-3">
                 <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-3 text-gray-400"
+                  type="submit"
+                  disabled={savingPassword}
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
                 >
-                  {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  <Lock className="h-4 w-4" />
+                  {savingPassword ? 'Updating...' : 'Change password'}
                 </button>
+                <p className="text-xs text-slate-500">Use at least 6 characters and avoid reusing an old password.</p>
               </div>
-            </div>
+            </form>
+          </ProfilePanel>
+        </div>
+      </div>
 
-            <div className="flex gap-4 pt-4">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold disabled:opacity-50"
-              >
-                {saving ? 'Updating...' : 'Change Password'}
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
-    </div>
+      {error ? (
+        <div className="inline-flex items-center gap-2 text-sm text-rose-600">
+          <AlertCircle className="h-4 w-4" />
+          {error}
+        </div>
+      ) : null}
+    </ProfilePageShell>
   )
 }
 
 export default function Profile() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Loading account...</div>}>
       <ProfileContent />
     </Suspense>
   )

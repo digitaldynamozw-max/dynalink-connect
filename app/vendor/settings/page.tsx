@@ -11,19 +11,18 @@ interface VendorProfile {
   vendorName: string
   vendorDescription: string
   vendorPhoneNumber: string
+  vendorImage?: string
+  storeBannerImage?: string
+  vendorCategory?: string
   storeAddress: string
   storeCity: string
   storeState: string
   storeZipCode: string
   commissionRate: number
-  bankAccountName?: string
-  bankAccountNumber?: string
-  bankName?: string
-  taxId?: string
 }
 
 export default function VendorSettingsPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
   const [profile, setProfile] = useState<VendorProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -31,10 +30,17 @@ export default function VendorSettingsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    if (session) {
-      fetchProfile()
+    if (status === 'loading') {
+      return
     }
-  }, [session])
+
+    if (!session) {
+      router.push('/auth/signin')
+      return
+    }
+
+    void fetchProfile()
+  }, [router, session, status])
 
   async function fetchProfile() {
     try {
@@ -69,10 +75,12 @@ export default function VendorSettingsPage() {
       })
 
       if (response.ok) {
-        setMessage({ type: 'success', text: 'Settings saved successfully!' })
+        const data = await response.json()
+        setProfile(data)
+        setMessage({ type: 'success', text: 'Settings saved successfully.' })
       } else {
         const error = await response.json()
-        setMessage({ type: 'error', text: error.message || 'Failed to save settings' })
+        setMessage({ type: 'error', text: error.error || 'Failed to save settings' })
       }
     } catch (error) {
       console.error('Failed to save settings:', error)
@@ -82,7 +90,7 @@ export default function VendorSettingsPage() {
     }
   }
 
-  if (loading) {
+  if (status === 'loading' || loading) {
     return (
       <div className="flex">
         <VendorSidebar />
@@ -113,14 +121,14 @@ export default function VendorSettingsPage() {
     <div className="flex">
       <VendorSidebar />
       <div className="flex-1 ml-64 min-h-screen bg-gray-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          {/* Header */}
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Store Settings</h1>
-            <p className="text-gray-600 mt-1">Manage your vendor profile and store information</p>
+            <p className="text-gray-600 mt-1">
+              Manage your storefront details. Delivery and dispatch updates are handled by admin.
+            </p>
           </div>
 
-          {/* Messages */}
           {message && (
             <div
               className={`mb-6 p-4 rounded-lg flex gap-3 ${
@@ -135,195 +143,136 @@ export default function VendorSettingsPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Store Information */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Store Information</h2>
-
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">Store Profile</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Store Name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Store Name</label>
                   <input
                     type="text"
                     value={profile.vendorName}
-                    onChange={e => setProfile({ ...profile, vendorName: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="Store name"
+                    onChange={(e) => setProfile({ ...profile, vendorName: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     placeholder="Enter store name"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone Number
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Store Category</label>
+                  <input
+                    type="text"
+                    value={profile.vendorCategory || ''}
+                    onChange={(e) => setProfile({ ...profile, vendorCategory: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="Electronics, Beauty, Home..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
                   <input
                     type="tel"
                     value={profile.vendorPhoneNumber}
-                    onChange={e => setProfile({ ...profile, vendorPhoneNumber: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="Phone number"
+                    onChange={(e) => setProfile({ ...profile, vendorPhoneNumber: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     placeholder="Enter phone number"
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Logo Image URL</label>
+                  <input
+                    type="url"
+                    value={profile.vendorImage || ''}
+                    onChange={(e) => setProfile({ ...profile, vendorImage: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="https://..."
+                  />
+                </div>
+
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Store Description
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Banner Image URL</label>
+                  <input
+                    type="url"
+                    value={profile.storeBannerImage || ''}
+                    onChange={(e) => setProfile({ ...profile, storeBannerImage: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Store Description</label>
                   <textarea
                     value={profile.vendorDescription}
-                    onChange={e => setProfile({ ...profile, vendorDescription: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(e) => setProfile({ ...profile, vendorDescription: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     rows={4}
-                    title="Store description"
                     placeholder="Describe your store"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Address Information */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Address Information</h2>
-
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">Store Location</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                This is your store location for records and pickup coordination. Delivery is managed from admin.
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Street Address
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Street Address</label>
                   <input
                     type="text"
                     value={profile.storeAddress}
-                    onChange={e => setProfile({ ...profile, storeAddress: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="Street address"
+                    onChange={(e) => setProfile({ ...profile, storeAddress: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     placeholder="Enter street address"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    City
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
                   <input
                     type="text"
                     value={profile.storeCity}
-                    onChange={e => setProfile({ ...profile, storeCity: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="City"
+                    onChange={(e) => setProfile({ ...profile, storeCity: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     placeholder="Enter city"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    State
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
                   <input
                     type="text"
                     value={profile.storeState}
-                    onChange={e => setProfile({ ...profile, storeState: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="State or province"
+                    onChange={(e) => setProfile({ ...profile, storeState: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     placeholder="Enter state"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Zip Code
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Zip Code</label>
                   <input
                     type="text"
                     value={profile.storeZipCode}
-                    onChange={e => setProfile({ ...profile, storeZipCode: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="Zip code"
+                    onChange={(e) => setProfile({ ...profile, storeZipCode: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     placeholder="Enter zip code"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Banking Information */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Banking Information</h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Bank Name
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.bankName || ''}
-                    onChange={e => setProfile({ ...profile, bankName: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="Bank name"
-                    placeholder="Enter bank name"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Account Name
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.bankAccountName || ''}
-                    onChange={e => setProfile({ ...profile, bankAccountName: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="Account name"
-                    placeholder="Enter account name"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Account Number (Encrypted)
-                  </label>
-                  <input
-                    type="password"
-                    value={profile.bankAccountNumber || ''}
-                    onChange={e => setProfile({ ...profile, bankAccountNumber: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="Bank account number (encrypted)"
-                    placeholder="••••••••••••••••"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tax ID / VAT Number
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.taxId || ''}
-                    onChange={e => setProfile({ ...profile, taxId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    title="Tax ID or VAT number"
-                    placeholder="Enter tax ID"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Commission Information */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Commission Information</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Your current commission rate is <strong>{profile.commissionRate}%</strong> per sale
+              <h2 className="text-xl font-semibold text-gray-900 mb-3">Commission</h2>
+              <p className="text-sm text-gray-600">
+                Your current marketplace markup rate is <strong>{profile.commissionRate}%</strong>.
               </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  Commission rates are set by the platform administrator. Contact support to discuss custom rates for your store.
-                </p>
-              </div>
             </div>
 
-            {/* Submit Button */}
             <div className="flex justify-end gap-4">
               <button
                 type="button"

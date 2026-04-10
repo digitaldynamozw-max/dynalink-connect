@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Edit, Lock, Unlock, RotateCcw, DollarSign, Trash2, Check, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Check, DollarSign, Edit, Lock, RotateCcw, Search, Trash2, Unlock, Users, Wallet, X } from 'lucide-react'
+import { AdminBadge, AdminEmptyState, AdminPageHeader, AdminSectionCard, AdminStatCard, AdminTableWrap } from '@/components/admin-ui'
 
 interface User {
   id: string
@@ -12,6 +13,16 @@ interface User {
   accountBalance: number
   isActive?: boolean
   createdAt: string
+}
+
+type AccountFilter = 'all' | 'clients' | 'vendors' | 'active' | 'blocked'
+
+function formatJoinedDate(value: string) {
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(value))
 }
 
 export default function ClientsPage() {
@@ -26,9 +37,11 @@ export default function ClientsPage() {
   const [creditLoading, setCreditLoading] = useState(false)
   const [creditError, setCreditError] = useState<string | null>(null)
   const [creditSuccess, setCreditSuccess] = useState(false)
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>('all')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetchClients()
+    void fetchClients()
   }, [])
 
   const fetchClients = async () => {
@@ -37,16 +50,12 @@ export default function ClientsPage() {
       setError(null)
       const res = await fetch('/api/admin/clients')
       if (res.ok) {
-        const data = await res.json()
-        console.log('Loaded clients:', data.length)
+        const data = (await res.json()) as User[]
         setClients(data)
       } else {
-        const errorData = await res.json().catch(() => ({}))
-        console.error('API error:', res.status, errorData)
         setError(`Failed to load clients: ${res.status}`)
       }
     } catch (err) {
-      console.error('Fetch error:', err)
       setError(`Error fetching clients: ${(err as Error).message}`)
     } finally {
       setLoading(false)
@@ -63,16 +72,16 @@ export default function ClientsPage() {
       const res = await fetch(`/api/admin/clients/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(editForm),
       })
 
       if (res.ok) {
         setEditingId(null)
-        fetchClients()
+        await fetchClients()
       } else {
         setError('Failed to update client')
       }
-    } catch (err) {
+    } catch {
       setError('Error updating client')
     }
   }
@@ -82,15 +91,15 @@ export default function ClientsPage() {
       const res = await fetch(`/api/admin/clients/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !isActive })
+        body: JSON.stringify({ isActive: !isActive }),
       })
 
       if (res.ok) {
-        fetchClients()
+        await fetchClients()
       } else {
         setError('Failed to update client status')
       }
-    } catch (err) {
+    } catch {
       setError('Error updating client')
     }
   }
@@ -98,26 +107,25 @@ export default function ClientsPage() {
   const handleResetPassword = async (id: string) => {
     try {
       const res = await fetch(`/api/admin/clients/${id}/reset-password`, {
-        method: 'POST'
+        method: 'POST',
       })
 
       if (res.ok) {
-        const data = await res.json()
         setPasswordReset(id)
-        setTimeout(() => setPasswordReset(null), 3000)
+        window.setTimeout(() => setPasswordReset(null), 3000)
       } else {
         setError('Failed to reset password')
       }
-    } catch (err) {
+    } catch {
       setError('Error resetting password')
     }
   }
 
   const handleAddCredit = async (id: string) => {
     setCreditError(null)
-    const amount = parseFloat(creditAmount)
+    const amount = Number.parseFloat(creditAmount)
 
-    if (!creditAmount || isNaN(amount) || amount <= 0) {
+    if (!creditAmount || Number.isNaN(amount) || amount <= 0) {
       setCreditError('Please enter a valid amount greater than 0')
       return
     }
@@ -127,17 +135,17 @@ export default function ClientsPage() {
       const res = await fetch(`/api/admin/clients/${id}/credit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount })
+        body: JSON.stringify({ amount }),
       })
 
       if (res.ok) {
         setCreditSuccess(true)
         setShowCreditModal(null)
         setCreditAmount('')
-        fetchClients()
-        setTimeout(() => setCreditSuccess(false), 3000)
+        await fetchClients()
+        window.setTimeout(() => setCreditSuccess(false), 3000)
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => null)
         setCreditError(data?.error || 'Failed to add credit')
       }
     } catch (err) {
@@ -152,220 +160,308 @@ export default function ClientsPage() {
 
     try {
       const res = await fetch(`/api/admin/clients/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       })
 
       if (res.ok) {
-        fetchClients()
+        await fetchClients()
       } else {
         setError('Failed to delete client')
       }
-    } catch (err) {
+    } catch {
       setError('Error deleting client')
     }
   }
 
-  if (loading) return <div className="text-center py-8">Loading clients...</div>
+  const totalAccounts = clients.length
+  const vendorAccounts = clients.filter((client) => client.role === 'vendor').length
+  const clientAccounts = clients.filter((client) => client.role === 'user').length
+  const activeAccounts = clients.filter((client) => client.isActive !== false).length
+  const blockedAccounts = clients.filter((client) => client.isActive === false).length
+  const totalBalance = clients.reduce((sum, client) => sum + client.accountBalance, 0)
+
+  const filteredClients = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase()
+
+    return clients.filter((client) => {
+      if (accountFilter === 'clients' && client.role !== 'user') return false
+      if (accountFilter === 'vendors' && client.role !== 'vendor') return false
+      if (accountFilter === 'active' && client.isActive === false) return false
+      if (accountFilter === 'blocked' && client.isActive !== false) return false
+
+      if (!normalizedSearch) {
+        return true
+      }
+
+      const haystack = `${client.name || ''} ${client.vendorName || ''} ${client.email}`.toLowerCase()
+      return haystack.includes(normalizedSearch)
+    })
+  }, [accountFilter, clients, search])
+
+  const reviewQueue = filteredClients.slice(0, 5)
+  const topBalances = [...clients].sort((left, right) => right.accountBalance - left.accountBalance).slice(0, 5)
+
+  if (loading) {
+    return <div className="py-8 text-center text-sm text-slate-500">Loading clients...</div>
+  }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Client Management</h1>
-        <button
-          onClick={() => window.location.href = '/admin/clients/export'}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-        >
-          Export Clients
-        </button>
-      </div>
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-sm">
+        <AdminPageHeader
+          title="Client Management"
+          description="Customer and vendor account oversight, balance visibility, and account access control."
+          action={
+            <>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search accounts"
+                  className="w-full rounded-lg border border-slate-200 py-1.5 pl-8 pr-3 text-xs text-slate-900 outline-none md:w-44"
+                />
+              </div>
+              <select
+                value={accountFilter}
+                onChange={(event) => setAccountFilter(event.target.value as AccountFilter)}
+                className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900"
+              >
+                <option value="all">All accounts</option>
+                <option value="clients">Clients only</option>
+                <option value="vendors">Vendors only</option>
+                <option value="active">Active only</option>
+                <option value="blocked">Blocked only</option>
+              </select>
+              <button
+                onClick={() => {
+                  window.location.href = '/admin/clients/export'
+                }}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                Export Clients
+              </button>
+            </>
+          }
+        />
 
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-      )}
+        <div className="space-y-4 p-3.5 sm:p-4">
+          {error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-100 border-b">
-              <tr>
-                <th className="px-6 py-3 text-left font-semibold text-gray-700">Name</th>
-                <th className="px-6 py-3 text-left font-semibold text-gray-700">Email</th>
-                <th className="px-6 py-3 text-left font-semibold text-gray-700">Balance</th>
-                <th className="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
-                <th className="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {clients.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    <div className="space-y-2">
-                      <p className="text-lg font-semibold">No clients or vendors found</p>
-                      <p className="text-sm">Clients and vendors will appear here once they register</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                clients.map((client) => (
-                  <tr key={client.id} className="border-b hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div>
-                        {editingId === client.id ? (
-                          <input
-                            type="text"
-                            value={editForm.name || ''}
-                            onChange={(e) =>
-                              setEditForm({ ...editForm, name: e.target.value })
-                            }
-                            className="border rounded px-2 py-1 w-40"
-                            title="Client name"
-                            placeholder="Client name"
-                          />
-                        ) : (
-                          <>
-                            <div className="font-semibold">{client.name || client.vendorName}</div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {client.role === 'vendor' ? '🏪 Vendor' : '👤 Client'}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  <td className="px-6 py-4">{client.email}</td>
-                  <td className="px-6 py-4 font-semibold text-blue-600">
-                    ${client.accountBalance.toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${
-                        client.isActive !== false
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      {client.isActive !== false ? (
-                        <>
-                          <Check className="h-3 w-3" /> Active
-                        </>
-                      ) : (
-                        <>
-                          <X className="h-3 w-3" /> Blocked
-                        </>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      {editingId === client.id ? (
-                        <>
-                          <button
-                            onClick={() => handleEditSave(client.id)}
-                            className="text-blue-600 hover:text-blue-800 font-semibold"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="text-gray-600 hover:text-gray-800"
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleEditStart(client)}
-                            className="text-blue-600 hover:text-blue-800"
-                            title="Edit"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleToggleStatus(client.id, client.isActive !== false)
-                            }
-                            className={
-                              client.isActive !== false
-                                ? 'text-red-600 hover:text-red-800'
-                                : 'text-green-600 hover:text-green-800'
-                            }
-                            title={
-                              client.isActive !== false ? 'Block' : 'Activate'
-                            }
-                          >
-                            {client.isActive !== false ? (
-                              <Lock className="h-4 w-4" />
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(145px,1fr))] gap-2">
+            <AdminStatCard label="Total Accounts" value={totalAccounts} helper="Combined clients and vendors" icon={Users} />
+            <AdminStatCard label="Clients" value={clientAccounts} helper="Customer accounts in the marketplace" icon={Users} />
+            <AdminStatCard label="Vendors" value={vendorAccounts} helper="Vendor-linked accounts" icon={Users} />
+            <AdminStatCard label="Active Access" value={activeAccounts} helper={`${blockedAccounts} accounts are currently blocked`} icon={Check} />
+            <AdminStatCard label="Stored Balance" value={`$${totalBalance.toFixed(2)}`} helper="Combined wallet balances" icon={Wallet} />
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+            <AdminSectionCard title="Accounts" description={`${filteredClients.length} records in the current view`} contentClassName="p-0">
+              <AdminTableWrap>
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-slate-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-700">Name</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-700">Email</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-700">Balance</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-700">Status</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredClients.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8">
+                          <AdminEmptyState message="No accounts match the current filters." />
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredClients.map((client) => (
+                        <tr key={client.id} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="px-3 py-2">
+                            {editingId === client.id ? (
+                              <input
+                                type="text"
+                                value={editForm.name || ''}
+                                onChange={(event) => {
+                                  setEditForm({ ...editForm, name: event.target.value })
+                                }}
+                                className="w-40 rounded-lg border border-slate-200 px-2 py-1"
+                                title="Client name"
+                                placeholder="Client name"
+                              />
                             ) : (
-                              <Unlock className="h-4 w-4" />
+                              <>
+                                <div className="font-semibold text-slate-900">{client.name || client.vendorName || client.email}</div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  {client.role === 'vendor' ? 'Vendor account' : 'Client account'} | Joined {formatJoinedDate(client.createdAt)}
+                                </div>
+                              </>
                             )}
-                          </button>
-                          <button
-                            onClick={() => handleResetPassword(client.id)}
-                            className="text-orange-600 hover:text-orange-800"
-                            title="Reset Password"
-                          >
-                            <RotateCcw className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setShowCreditModal(client.id)}
-                            className="text-green-600 hover:text-green-800"
-                            title="Add Credit"
-                          >
-                            <DollarSign className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClient(client.id)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-              )}
-            </tbody>
-          </table>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-700">{client.email}</td>
+                          <td className="px-3 py-2 text-xs font-semibold text-blue-600">${client.accountBalance.toFixed(2)}</td>
+                          <td className="px-3 py-2">
+                            <AdminBadge
+                              label={client.isActive !== false ? 'Active' : 'Blocked'}
+                              tone={client.isActive !== false ? 'green' : 'red'}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex gap-2">
+                              {editingId === client.id ? (
+                                <>
+                                  <button
+                                    onClick={() => void handleEditSave(client.id)}
+                                    className="font-semibold text-blue-600 hover:text-blue-800"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingId(null)}
+                                    className="text-slate-600 hover:text-slate-800"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleEditStart(client)}
+                                    className="text-blue-600 hover:text-blue-800"
+                                    title="Edit"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => void handleToggleStatus(client.id, client.isActive !== false)}
+                                    className={
+                                      client.isActive !== false
+                                        ? 'text-red-600 hover:text-red-800'
+                                        : 'text-green-600 hover:text-green-800'
+                                    }
+                                    title={client.isActive !== false ? 'Block' : 'Activate'}
+                                  >
+                                    {client.isActive !== false ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                                  </button>
+                                  <button
+                                    onClick={() => void handleResetPassword(client.id)}
+                                    className="text-orange-600 hover:text-orange-800"
+                                    title="Reset Password"
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setShowCreditModal(client.id)}
+                                    className="text-green-600 hover:text-green-800"
+                                    title="Add Credit"
+                                  >
+                                    <DollarSign className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => void handleDeleteClient(client.id)}
+                                    className="text-red-600 hover:text-red-800"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </AdminTableWrap>
+            </AdminSectionCard>
+
+            <div className="space-y-4">
+              <AdminSectionCard title="Review Queue" description="Five compact account cards for quick follow-up.">
+                <div className="grid gap-3">
+                  {reviewQueue.length === 0 ? (
+                    <AdminEmptyState message="No accounts are visible in the current review queue." />
+                  ) : (
+                    reviewQueue.map((client) => (
+                      <div key={client.id} className="rounded-2xl border border-slate-200 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-900">{client.name || client.vendorName || client.email}</p>
+                            <p className="mt-1 text-sm text-slate-500">{client.email}</p>
+                          </div>
+                          <AdminBadge label={client.role === 'vendor' ? 'Vendor' : 'Client'} tone={client.role === 'vendor' ? 'green' : 'blue'} />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                          <span className="rounded-full bg-slate-100 px-3 py-1">{client.isActive !== false ? 'Access active' : 'Blocked'}</span>
+                          <span className="rounded-full bg-slate-100 px-3 py-1">${client.accountBalance.toFixed(2)} balance</span>
+                          <span className="rounded-full bg-slate-100 px-3 py-1">{formatJoinedDate(client.createdAt)}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </AdminSectionCard>
+
+              <AdminSectionCard title="Top Balances" description="Accounts currently holding the largest wallet values.">
+                <div className="grid gap-3">
+                  {topBalances.length === 0 ? (
+                    <AdminEmptyState message="No balances are available yet." />
+                  ) : (
+                    topBalances.map((client) => (
+                      <div key={client.id} className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3">
+                        <div>
+                          <p className="font-medium text-slate-900">{client.name || client.vendorName || client.email}</p>
+                          <p className="text-sm text-slate-500">{client.role === 'vendor' ? 'Vendor account' : 'Client account'}</p>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-900">${client.accountBalance.toFixed(2)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </AdminSectionCard>
+            </div>
+          </div>
         </div>
       </div>
 
-      {showCreditModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h2 className="text-lg font-bold mb-4">Add Credit</h2>
-            
-            {creditError && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded mb-3 text-sm">
+      {showCreditModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-96 rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-slate-900">Add Credit</h2>
+
+            {creditError ? (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {creditError}
               </div>
-            )}
+            ) : null}
 
             <input
               type="number"
               placeholder="Amount"
               value={creditAmount}
-              onChange={(e) => setCreditAmount(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !creditLoading) {
-                  handleAddCredit(showCreditModal)
+              onChange={(event) => setCreditAmount(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !creditLoading) {
+                  void handleAddCredit(showCreditModal)
                 }
               }}
               disabled={creditLoading}
-              className="w-full border rounded px-3 py-2 mb-4 disabled:bg-gray-100"
+              className="mt-4 w-full rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-100"
               min="0.01"
               step="0.01"
             />
 
-            <div className="flex gap-2">
+            <div className="mt-4 flex gap-2">
               <button
-                onClick={() => handleAddCredit(showCreditModal)}
+                onClick={() => void handleAddCredit(showCreditModal)}
                 disabled={creditLoading}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {creditLoading ? 'Adding...' : 'Add'}
               </button>
@@ -376,26 +472,26 @@ export default function ClientsPage() {
                   setCreditError(null)
                 }}
                 disabled={creditLoading}
-                className="flex-1 bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                className="flex-1 rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {creditSuccess && (
-        <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+      {creditSuccess ? (
+        <div className="fixed right-4 top-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-sm">
           Credit added successfully!
         </div>
-      )}
+      ) : null}
 
-      {passwordReset && (
-        <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+      {passwordReset ? (
+        <div className="fixed right-4 top-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-sm">
           Password reset email sent!
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

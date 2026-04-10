@@ -1,9 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useCartStore } from '@/lib/store'
-import { ShoppingCart, Star, Filter, X, ChevronDown } from 'lucide-react'
+import { ShoppingCart, Star, Filter, Store, X } from 'lucide-react'
 import Link from 'next/link'
+import { getProductAttributeSummary, isFoodProduct } from '@/lib/product-attributes'
+import { toVendorSlug } from '@/lib/vendor-slug'
+import { getResolvedProductOptionGroups } from '@/lib/product-options'
+import type { ProductOptionGroup } from '@/lib/product-options'
 
 interface Product {
   id: string
@@ -17,13 +22,33 @@ interface Product {
   stock: number
   salesCount: number
   rating: number
+  vendorId?: string | null
+  vendorName?: string | null
+  vendorCategory?: string | null
+  vendorAddress?: string | null
+  optionGroupsJson?: string | null
+  resolvedOptionGroups?: ProductOptionGroup[]
+  hasConfigurableOptions?: boolean
 }
 
 interface ProductsListProps {
   category?: string
 }
 
-const CATEGORIES = ['Electronics', 'Books', 'Home', 'Sports', 'Clothing', 'Beauty', 'Food & Beverage']
+const CATEGORIES = [
+  'Electronics',
+  'Books',
+  'Home',
+  'Sports',
+  'Clothing',
+  'Beauty',
+  'Food & Beverage',
+  'Toys & Games',
+  'Health',
+  'Office',
+  'Automotive',
+  'Pet Supplies',
+]
 const PRICE_RANGES = [
   { label: 'Any', min: 0, max: Infinity },
   { label: 'Under $50', min: 0, max: 50 },
@@ -33,30 +58,40 @@ const PRICE_RANGES = [
 ]
 
 export default function ProductsList({ category }: ProductsListProps) {
+  const searchParams = useSearchParams()
   const [allProducts, setAllProducts] = useState<Product[]>([])
-  const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(category)
   const [searchTerm, setSearchTerm] = useState('')
-  const [showMobileFilter, setShowMobileFilter] = useState(false)
+  const [showMobileFilter, setShowMobileFilter] = useState(() => searchParams.get('openFilters') === '1')
   const [selectedPriceRange, setSelectedPriceRange] = useState({ min: 0, max: Infinity })
   const [minRating, setMinRating] = useState(0)
   const [inStockOnly, setInStockOnly] = useState(false)
   const [sortBy, setSortBy] = useState<'name' | 'price-asc' | 'price-desc' | 'rating' | 'sales'>('name')
   const addItem = useCartStore(state => state.addItem)
 
+  useEffect(() => {
+    const openFilters = () => setShowMobileFilter(true)
+
+    window.addEventListener('dynalink:open-filters', openFilters)
+    return () => window.removeEventListener('dynalink:open-filters', openFilters)
+  }, [searchParams])
+
   // Fetch products
   useEffect(() => {
     fetch('/api/products')
       .then(res => res.json())
       .then(data => {
-        setAllProducts(data)
+        setAllProducts(Array.isArray(data) ? data : [])
+        setLoading(false)
+      })
+      .catch(() => {
+        setAllProducts([])
         setLoading(false)
       })
   }, [])
 
-  // Apply filters
-  useEffect(() => {
+  const products = useMemo(() => {
     let filtered = allProducts
 
     // Category filter
@@ -105,8 +140,8 @@ export default function ProductsList({ category }: ProductsListProps) {
         sorted.sort((a, b) => a.name.localeCompare(b.name))
     }
 
-    setProducts(sorted)
-  }, [selectedCategory, searchTerm, selectedPriceRange, minRating, inStockOnly, sortBy, allProducts])
+    return sorted
+  }, [allProducts, inStockOnly, minRating, searchTerm, selectedCategory, selectedPriceRange, sortBy])
 
   const handleCategoryClick = (cat: string | undefined) => {
     setSelectedCategory(cat)
@@ -124,6 +159,14 @@ export default function ProductsList({ category }: ProductsListProps) {
 
   const hasActiveFilters = selectedCategory || searchTerm || selectedPriceRange.max !== Infinity || minRating > 0 || inStockOnly || sortBy !== 'name'
 
+  const getMarketplaceHref = (product: Product) => {
+    if (!product.vendorName) {
+      return `/products/${product.id}`
+    }
+
+    return `/vendor/${toVendorSlug(product.vendorName)}?product=${product.id}`
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -140,8 +183,8 @@ export default function ProductsList({ category }: ProductsListProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Product Catalog</h1>
-          <p className="text-gray-600 mb-6">Browse our collection of quality products</p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Marketplace</h1>
+          <p className="text-gray-600 mb-6">Browse products across all stores, then jump into a vendor storefront to explore more.</p>
 
           {/* Search Bar */}
           <div className="relative mb-6">
@@ -182,7 +225,7 @@ export default function ProductsList({ category }: ProductsListProps) {
                 <h3 className="font-semibold text-gray-900 mb-3">Sort by</h3>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
+                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                   title="Sort products by"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -319,7 +362,7 @@ export default function ProductsList({ category }: ProductsListProps) {
                         <label className="block text-sm font-semibold mb-2">Sort</label>
                         <select
                           value={sortBy}
-                          onChange={(e) => setSortBy(e.target.value as any)}
+                          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                           title="Sort products by"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         >
@@ -396,12 +439,34 @@ export default function ProductsList({ category }: ProductsListProps) {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {products.map(product => (
-                  <Link key={product.id} href={`/products/${product.id}`} className="block">
-                    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow group">
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {products.map(product => {
+                  const productHasOptions =
+                    product.hasConfigurableOptions ??
+                    ((product.resolvedOptionGroups?.length ??
+                      getResolvedProductOptionGroups({
+                        optionGroupsJson: product.optionGroupsJson,
+                        category: product.category,
+                        vendorCategory: product.vendorCategory,
+                        vendorName: product.vendorName,
+                      }).length) > 0)
+                  const attributeSummary = getProductAttributeSummary({
+                    name: product.name,
+                    category: product.category,
+                    vendorName: product.vendorName,
+                    stock: product.stock,
+                  })
+                  const foodProduct = isFoodProduct({
+                    name: product.name,
+                    category: product.category,
+                    vendorName: product.vendorName,
+                  })
+
+                  return (
+                  <Link key={product.id} href={getMarketplaceHref(product)} className="block h-full">
+                    <div className="group flex h-full min-h-[420px] flex-col overflow-hidden rounded-lg bg-white shadow-md transition-shadow hover:shadow-xl">
                       {/* Image */}
-                      <div className="relative bg-gray-100 h-48 overflow-hidden">
+                      <div className="relative h-44 overflow-hidden bg-gray-100">
                         {product.image ? (
                           <img
                             src={product.image}
@@ -423,65 +488,109 @@ export default function ProductsList({ category }: ProductsListProps) {
                         )}
                         {product.stock === 0 && (
                           <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                            <span className="text-white font-bold text-lg">Out of Stock</span>
+                            <span className="text-white font-bold text-lg">
+                              {foodProduct ? 'Unavailable' : 'Out of Stock'}
+                            </span>
                           </div>
                         )}
                       </div>
 
                       {/* Content */}
-                      <div className="p-4">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600">
+                      <div className="flex flex-1 flex-col p-3">
+                        <h3 className="mb-1 line-clamp-2 text-base font-semibold text-gray-900 group-hover:text-blue-600">
                           {product.name}
                         </h3>
-                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                        <div className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-blue-600">
+                          <Store className="h-3.5 w-3.5" />
+                          {product.vendorName || 'Marketplace Store'}
+                        </div>
+                        <p className="mb-2 line-clamp-2 text-sm text-gray-600">
                           {product.description}
                         </p>
 
+                        <div className="mb-3 flex flex-wrap gap-2">
+                          {attributeSummary.badges.map((badge) => (
+                            <span
+                              key={badge}
+                              className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700"
+                            >
+                              {badge}
+                            </span>
+                          ))}
+                        </div>
+
                         {/* Rating */}
-                        <div className="flex items-center gap-2 mb-4">
+                        <div className="mb-3 flex items-center gap-2">
                           <div className="flex items-center">
                             <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                            <span className="text-sm font-medium text-gray-900 ml-1">{product.rating}</span>
+                            <span className="ml-1 text-sm font-medium text-gray-900">{product.rating.toFixed(2)}</span>
                           </div>
                           <span className="text-xs text-gray-500">({product.salesCount} sold)</span>
                         </div>
 
+                        <div className="mb-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              product.stock > 0
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-rose-50 text-rose-700'
+                            }`}
+                          >
+                            {attributeSummary.availabilityLabel}
+                          </span>
+                        </div>
+
                         {/* Price and Button */}
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2">
+                        <div className="mt-auto flex items-end justify-between gap-3">
+                          <div className="min-w-0 flex-1">
                             {product.onSale && product.salePrice ? (
-                              <>
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-2xl font-bold text-red-600">${product.salePrice.toFixed(2)}</span>
                                 <span className="text-lg font-semibold text-gray-400 line-through">${product.price.toFixed(2)}</span>
                                 <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded">
                                   {Math.round(((product.price - product.salePrice) / product.price) * 100)}% off
                                 </span>
-                              </>
+                              </div>
                             ) : (
-                              <span className="text-2xl font-bold text-blue-600">${product.price.toFixed(2)}</span>
+                              <span className="text-xl font-bold text-blue-600">${product.price.toFixed(2)}</span>
                             )}
                           </div>
                           <button
                             onClick={(e) => {
                               e.preventDefault()
-                              addItem({
+                              if (productHasOptions) {
+                                window.location.href = `/products/${product.id}`
+                                return
+                              }
+                              const result = addItem({
                                 id: product.id,
+                                productId: product.id,
                                 name: product.name,
                                 price: product.onSale && product.salePrice ? product.salePrice : product.price,
                                 image: product.image,
+                                vendorId: product.vendorId,
+                                vendorName: product.vendorName,
+                                vendorAddress: product.vendorAddress,
                               })
+                              if (!result.ok) {
+                                alert(result.error)
+                              }
                             }}
                             disabled={product.stock === 0}
-                            className="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
+                            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                           >
                             <ShoppingCart className="h-4 w-4" />
-                          <span className="hidden sm:inline">Add</span>
-                        </button>
+                            <span className="hidden sm:inline">{productHasOptions ? 'Choose' : 'Add'}</span>
+                          </button>
+                        </div>
+                        <p className="mt-3 text-xs font-medium text-slate-500">
+                          Tap the card to visit this store and see more products from the same vendor.
+                        </p>
                       </div>
                     </div>
-                    </div>
                   </Link>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

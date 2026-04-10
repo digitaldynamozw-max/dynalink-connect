@@ -2,26 +2,54 @@
 
 import Link from 'next/link'
 import { useSession, signIn, signOut } from 'next-auth/react'
-import { ShoppingCart, LogOut } from 'lucide-react'
+import { Heart, LogOut, Menu, Search, ShoppingBag, SlidersHorizontal, User } from 'lucide-react'
 import Image from 'next/image'
 import { useCartStore } from '@/lib/store'
+import { useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 
 export function Navbar() {
+  const [mobileOpen, setMobileOpen] = useState(false)
   const { data: session } = useSession()
   const { items } = useCartStore()
+  const pathname = usePathname()
+  const router = useRouter()
+  const role = (session?.user as { role?: string } | undefined)?.role
+  const isVendor = role === 'vendor' || role === 'vendor_staff'
+  const isAdmin = role === 'admin'
+  const isCourier = role === 'courier'
+
+  const handleOpenFilters = () => {
+    if (pathname?.startsWith('/products')) {
+      window.dispatchEvent(new CustomEvent('dynalink:open-filters'))
+      return
+    }
+
+    router.push('/products?openFilters=1')
+  }
 
   return (
-    <nav className="bg-blue-600 shadow-md sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <div className="flex items-center">
-            <Link href="/">
-              <Image 
-                src="/logo.png" 
-                alt="DynaLink Connect logo" 
-                className="h-12 w-auto" 
-                width={180} 
+    <nav className="theme-nav sticky top-0 z-50 shadow-[0_12px_34px_-28px_rgba(24,34,43,0.55)]">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex min-h-[4.75rem] flex-wrap items-center justify-between gap-3 py-2 lg:flex-nowrap">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <button
+              type="button"
+              onClick={() => setMobileOpen((current) => !current)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/14 bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl md:hidden"
+              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <Link
+              href="/"
+              className="flex shrink-0 items-center rounded-2xl bg-[var(--brand-ink)] px-2.5 py-2 shadow-[0_16px_34px_-20px_rgba(24,34,43,0.85)] ring-1 ring-white/10 sm:px-3"
+            >
+              <Image
+                src="/logo.png"
+                alt="DynaLink Connect logo"
+                className="h-9 w-auto object-contain sm:h-11"
+                width={180}
                 height={60}
                 priority
                 quality={95}
@@ -29,32 +57,33 @@ export function Navbar() {
             </Link>
           </div>
 
-          {/* Navigation Links */}
-          <div className="hidden md:flex space-x-8">
-            <Link href="/products" className="text-white hover:text-gray-200 font-medium">
-              Products
+          <div className="hidden items-center gap-5 xl:flex">
+            <Link href="/vendors" className="text-sm font-medium text-white/82 transition hover:text-white">
+              Stores
             </Link>
-            <Link href="/orders" className="text-white hover:text-gray-200 font-medium">
+            <Link href="/products" className="text-sm font-medium text-white/82 transition hover:text-white">
+              Marketplace
+            </Link>
+            <Link href="/orders" className="text-sm font-medium text-white/82 transition hover:text-white">
               Orders
             </Link>
             {session && (
               <>
-                <Link href="/products" className="text-white hover:text-gray-200 font-medium">
-                  Marketplace
-                </Link>
-                <Link href="/vendors" className="text-white hover:text-gray-200 font-medium">
-                  Vendors
-                </Link>
-                {(session.user as any)?.isVendor && (
-                  <Link href="/vendor/dashboard" className="text-green-300 hover:text-green-100 font-medium font-bold">
+                {isVendor && (
+                  <Link href="/vendor/dashboard" className="text-sm font-semibold text-[#9ce6ff] transition hover:text-white">
                     My Store
                   </Link>
                 )}
-                <Link href="/profile" className="text-white hover:text-gray-200 font-medium">
+                {isCourier && (
+                  <Link href="/courier/dashboard" className="text-sm font-semibold text-[#9ce6ff] transition hover:text-white">
+                    Courier Hub
+                  </Link>
+                )}
+                <Link href="/profile" className="text-sm font-medium text-white/82 transition hover:text-white">
                   My Account
                 </Link>
-                {(session.user as any)?.role === 'admin' && (
-                  <Link href="/admin/dashboard" className="text-yellow-300 hover:text-yellow-100 font-medium font-bold">
+                {isAdmin && (
+                  <Link href="/admin/dashboard" className="text-sm font-semibold text-[#b9ccff] transition hover:text-white">
                     Admin
                   </Link>
                 )}
@@ -62,37 +91,105 @@ export function Navbar() {
             )}
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center space-x-4">
-            <Link href="/cart" className="relative text-white hover:text-gray-200">
-              <ShoppingCart className="h-6 w-6" aria-label="View Cart" />
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2 md:gap-3">
+            <button
+              type="button"
+              className="hidden h-10 w-10 items-center justify-center rounded-full text-white/82 transition hover:bg-white/10 hover:text-white md:inline-flex"
+              aria-label="Search"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenFilters}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/82 transition hover:bg-white/10 hover:text-white"
+              aria-label="Filters"
+            >
+              <SlidersHorizontal className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              className="hidden h-10 w-10 items-center justify-center rounded-full text-white/82 transition hover:bg-white/10 hover:text-white md:inline-flex"
+              aria-label="Wishlist"
+            >
+              <Heart className="h-5 w-5" />
+            </button>
+            <Link href="/cart" className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-white/88 transition hover:bg-white/10 hover:text-white">
+              <ShoppingBag className="h-5 w-5" aria-label="View Cart" />
+              <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--brand-accent)] text-[11px] text-white">
                 {items.length}
               </span>
             </Link>
             {session ? (
-              <div className="flex items-center space-x-4">
-                <span className="text-white">{session.user?.name}</span>
+              <div className="flex items-center gap-2">
+                <div className="hidden text-right lg:block">
+                  <p className="text-xs font-semibold text-white">{session.user?.name}</p>
+                  <p className="text-[11px] text-white/55">Signed in</p>
+                </div>
                 <button
                   onClick={() => signOut()}
-                  className="text-white hover:text-gray-200"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/82 transition hover:bg-white/10 hover:text-white"
                   title="Sign Out"
                 >
-                  <LogOut className="h-6 w-6" />
+                  <LogOut className="h-5 w-5" />
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => signIn()}
-                className="bg-white text-blue-600 px-4 py-2 rounded-lg hover:bg-gray-100 transition"
+                className="inline-flex items-center gap-2 rounded-full border border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.08))] px-4 py-2 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-xl transition hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.22),rgba(255,255,255,0.1))]"
                 title="Sign In"
               >
+                <User className="h-4 w-4" />
                 Sign In
               </button>
             )}
           </div>
         </div>
+
+        {mobileOpen ? (
+          <div className="border-t border-white/10 py-4 md:hidden">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm font-medium text-white">
+                <Link href="/vendors" className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 backdrop-blur-xl">Stores</Link>
+                <Link href="/products" className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 backdrop-blur-xl">Marketplace</Link>
+                <Link href="/orders" className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 backdrop-blur-xl">Orders</Link>
+                <Link href="/profile" className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 backdrop-blur-xl">Account</Link>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenFilters}
+                  className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-left text-sm font-medium text-white backdrop-blur-xl"
+                >
+                  Filters
+                </button>
+                {isVendor ? (
+                  <Link href="/vendor/dashboard" className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm font-medium text-white backdrop-blur-xl">
+                    Vendor Dashboard
+                  </Link>
+                ) : isCourier ? (
+                  <Link href="/courier/dashboard" className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm font-medium text-white backdrop-blur-xl">
+                    Courier Hub
+                  </Link>
+                ) : isAdmin ? (
+                  <Link href="/admin/dashboard" className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm font-medium text-white backdrop-blur-xl">
+                    Admin
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => signIn()}
+                    className="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-left text-sm font-medium text-white backdrop-blur-xl"
+                  >
+                    Sign In
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </nav>
-  );
+  )
 }

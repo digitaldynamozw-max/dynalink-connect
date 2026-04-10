@@ -2,8 +2,18 @@
 // It does not need to import `prisma/config` during runtime.
 import "dotenv/config";
 
+function resolveSchemaPath() {
+  const databaseUrl = process.env["DATABASE_URL"] ?? "";
+
+  if (databaseUrl.startsWith("mysql://")) {
+    return "prisma/schema.mysql.prisma";
+  }
+
+  return "prisma/schema.prisma";
+}
+
 export default {
-  schema: "prisma/schema.prisma",
+  schema: resolveSchemaPath(),
   migrations: {
     path: "prisma/migrations",
   },

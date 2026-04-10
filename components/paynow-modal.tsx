@@ -10,7 +10,15 @@ interface PayNowPayment {
   amount: number
   subtotal?: number
   deliveryFee?: number
-  vendorFees?: Array<{ vendorId: string; fee: number; itemCount: number }>
+  platformFee?: number
+  fulfillmentMethod?: 'delivery' | 'pickup'
+  vendorFees?: Array<{
+    vendorId: string
+    vendorName?: string
+    fee: number
+    itemCount: number
+    distanceKm?: number | null
+  }>
   successUrl: string
 }
 
@@ -123,14 +131,28 @@ export function PayNowModal({ paymentData, onClose, onSuccess }: PayNowModalProp
                   <span>${paymentData.subtotal.toFixed(2)}</span>
                 </div>
               )}
+
+              {paymentData.platformFee !== undefined && (
+                <div className="flex justify-between text-sm text-gray-700">
+                  <span>Platform fee:</span>
+                  <span>${paymentData.platformFee.toFixed(2)}</span>
+                </div>
+              )}
               
               {paymentData.vendorFees && paymentData.vendorFees.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-600 mt-2 mb-1">Delivery Fees:</p>
+                  <p className="text-xs font-medium text-gray-600 mt-2 mb-1">
+                    Delivery Fees by Vendor:
+                  </p>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Each vendor is charged from their store location to your delivery address.
+                  </p>
                   {paymentData.vendorFees.map((fee, index) => (
                     <div key={index} className="flex justify-between text-xs text-gray-600 ml-2">
                       <span>
-                        {fee.vendorId === 'admin' ? 'Admin Store' : `Vendor (${fee.itemCount} item${fee.itemCount !== 1 ? 's' : ''})`}
+                        {fee.vendorName || (fee.vendorId === 'admin' ? 'Admin Store' : 'Vendor')}
+                        {typeof fee.distanceKm === 'number' ? ` (${fee.distanceKm.toFixed(2)} km)` : ''}
+                        {` • ${fee.itemCount} item${fee.itemCount !== 1 ? 's' : ''}`}
                       </span>
                       <span>${fee.fee.toFixed(2)}</span>
                     </div>
@@ -140,7 +162,7 @@ export function PayNowModal({ paymentData, onClose, onSuccess }: PayNowModalProp
               
               {paymentData.deliveryFee !== undefined && (
                 <div className="flex justify-between text-sm font-semibold text-gray-900 border-t pt-2 mt-2">
-                  <span>Total Delivery:</span>
+                  <span>{paymentData.fulfillmentMethod === 'pickup' ? 'Collection charge' : 'Total Delivery'}:</span>
                   <span>${paymentData.deliveryFee.toFixed(2)}</span>
                 </div>
               )}

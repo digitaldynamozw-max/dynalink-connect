@@ -1,0 +1,286 @@
+@import "tailwindcss";
+
+:root {
+  --background: #edf3fb;
+  --foreground: #102033;
+  --surface: rgba(255, 255, 255, 0.58);
+  --surface-strong: rgba(255, 255, 255, 0.78);
+  --panel: rgba(255, 255, 255, 0.42);
+  --border: rgba(161, 192, 229, 0.28);
+  --border-strong: rgba(150, 185, 226, 0.46);
+  --muted: #58708c;
+  --brand-ink: #0e1f30;
+  --brand-accent: #4c8dff;
+  --brand-accent-strong: #245fdd;
+  --brand-accent-soft: rgba(76, 141, 255, 0.14);
+  --brand-highlight: #53d2ff;
+  --brand-highlight-soft: rgba(83, 210, 255, 0.15);
+  --success-soft: rgba(92, 214, 165, 0.16);
+  --shadow-soft: 0 30px 80px -40px rgba(12, 30, 58, 0.38);
+  --shadow-card: 0 24px 56px -34px rgba(16, 32, 51, 0.22);
+  --nav-bg: linear-gradient(180deg, rgba(7, 15, 27, 0.88), rgba(12, 22, 37, 0.74));
+  --nav-border: rgba(201, 233, 255, 0.16);
+  --sidebar-bg: linear-gradient(180deg, rgba(6, 14, 26, 0.9), rgba(10, 22, 37, 0.82));
+  --hero-bg:
+    linear-gradient(135deg, rgba(7, 16, 28, 0.92), rgba(32, 87, 198, 0.68)),
+    radial-gradient(circle at top right, rgba(83, 210, 255, 0.24), transparent 46%);
+  --glass-elevated:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.3));
+  --glass-subtle:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.2));
+  --font-geist-sans: "Segoe UI", "Trebuchet MS", Arial, sans-serif;
+  --font-geist-mono: "Cascadia Mono", "Courier New", Courier, monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+  --background: #06111f;
+  --foreground: #edf7ff;
+  --surface: rgba(10, 25, 44, 0.58);
+  --surface-strong: rgba(11, 28, 47, 0.78);
+  --panel: rgba(12, 27, 46, 0.5);
+  --border: rgba(107, 165, 224, 0.18);
+  --border-strong: rgba(119, 183, 245, 0.3);
+  --muted: #9db6cf;
+  --brand-ink: #edf7ff;
+  --brand-accent: #67a8ff;
+  --brand-accent-strong: #3a7fff;
+  --brand-accent-soft: rgba(103, 168, 255, 0.16);
+  --brand-highlight: #6ae6ff;
+  --brand-highlight-soft: rgba(106, 230, 255, 0.16);
+  --success-soft: rgba(92, 214, 165, 0.18);
+  --shadow-soft: 0 34px 90px -46px rgba(0, 0, 0, 0.82);
+  --shadow-card: 0 24px 64px -34px rgba(0, 0, 0, 0.72);
+  --nav-bg: linear-gradient(180deg, rgba(4, 10, 20, 0.9), rgba(8, 16, 30, 0.8));
+  --nav-border: rgba(138, 202, 255, 0.14);
+  --sidebar-bg: linear-gradient(180deg, rgba(4, 10, 20, 0.94), rgba(8, 17, 31, 0.86));
+  --hero-bg:
+    linear-gradient(135deg, rgba(4, 12, 24, 0.94), rgba(20, 71, 180, 0.7)),
+    radial-gradient(circle at top right, rgba(106, 230, 255, 0.2), transparent 46%);
+  --glass-elevated:
+    linear-gradient(180deg, rgba(17, 37, 62, 0.74), rgba(9, 22, 39, 0.5));
+  --glass-subtle:
+    linear-gradient(180deg, rgba(16, 36, 60, 0.52), rgba(8, 22, 38, 0.38));
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  background-image:
+    radial-gradient(circle at 12% 10%, rgba(83, 210, 255, 0.22), transparent 24%),
+    radial-gradient(circle at 86% 8%, rgba(76, 141, 255, 0.26), transparent 20%),
+    radial-gradient(circle at 52% 102%, rgba(255, 255, 255, 0.9), transparent 42%),
+    linear-gradient(180deg, #f6faff 0%, #edf4fb 45%, #dce8f5 100%);
+  font-family: var(--font-geist-sans);
+  min-height: 100vh;
+}
+
+a {
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.theme-app-shell {
+  background:
+    radial-gradient(circle at top left, rgba(83, 210, 255, 0.18), transparent 22%),
+    radial-gradient(circle at top right, rgba(76, 141, 255, 0.16), transparent 18%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(223, 236, 248, 0.5));
+}
+
+.theme-panel {
+  background: var(--glass-subtle);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08),
+    var(--shadow-card);
+  -webkit-backdrop-filter: blur(28px) saturate(185%);
+  backdrop-filter: blur(28px) saturate(185%);
+}
+
+.theme-panel-strong {
+  background: var(--glass-elevated);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    var(--shadow-soft);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  backdrop-filter: blur(30px) saturate(190%);
+}
+
+.theme-nav {
+  background: var(--nav-bg);
+  border-bottom: 1px solid var(--nav-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 45px -34px rgba(0, 0, 0, 0.75);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+
+.theme-sidebar {
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--nav-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    24px 0 45px -36px rgba(0, 0, 0, 0.7);
+  color: #eef5ff;
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+}
+
+.theme-hero {
+  background: var(--hero-bg);
+  border: 1px solid var(--nav-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    var(--shadow-soft);
+  -webkit-backdrop-filter: blur(30px) saturate(185%);
+  backdrop-filter: blur(30px) saturate(185%);
+}
+
+.theme-kicker {
+  background: rgba(255, 255, 255, 0.4);
+  color: #165f89;
+  border: 1px solid rgba(165, 204, 237, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
+  -webkit-backdrop-filter: blur(22px) saturate(175%);
+  backdrop-filter: blur(22px) saturate(175%);
+}
+
+.theme-accent-btn {
+  background: linear-gradient(135deg, var(--brand-highlight), var(--brand-accent-strong));
+  color: white;
+  box-shadow: 0 20px 34px -20px rgba(36, 95, 221, 0.45);
+}
+
+.theme-accent-btn:hover {
+  filter: brightness(1.05) saturate(1.03);
+}
+
+.theme-secondary-btn {
+  background: var(--glass-subtle);
+  border: 1px solid var(--border-strong);
+  color: var(--brand-ink);
+  -webkit-backdrop-filter: blur(22px) saturate(175%);
+  backdrop-filter: blur(22px) saturate(175%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 18px 34px -28px rgba(15, 23, 34, 0.28);
+}
+
+.theme-secondary-btn:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.26));
+}
+
+.theme-highlight-chip {
+  background: var(--brand-highlight-soft);
+  color: var(--brand-highlight);
+}
+
+.theme-accent-chip {
+  background: var(--brand-accent-soft);
+  color: var(--brand-accent-strong);
+}
+
+.theme-icon-chip {
+  background: linear-gradient(135deg, var(--brand-highlight-soft), rgba(255, 255, 255, 0.88));
+  color: var(--brand-accent-strong);
+  border: 1px solid rgba(107, 165, 224, 0.18);
+}
+
+.theme-grid {
+  background-image:
+    linear-gradient(rgba(24, 34, 43, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 34, 43, 0.025) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Keep light-surface content readable even when the browser prefers dark mode. */
+.bg-white,
+.bg-gray-50,
+.bg-gray-100,
+.bg-slate-50,
+.bg-slate-100 {
+  color: #111827;
+}
+
+html.dark body {
+  background:
+    radial-gradient(circle at 14% 12%, rgba(106, 230, 255, 0.12), transparent 24%),
+    radial-gradient(circle at 82% 8%, rgba(103, 168, 255, 0.16), transparent 22%),
+    linear-gradient(180deg, #06111f, #091726 55%, #0c1b2d 100%);
+  color: var(--foreground);
+}
+
+html.dark .bg-white {
+  background-color: #18232d !important;
+  color: #e5eefb;
+}
+
+html.dark .bg-gray-50,
+html.dark .bg-slate-50 {
+  background-color: #111c31 !important;
+  color: #dbe7f7;
+}
+
+html.dark .bg-gray-100,
+html.dark .bg-slate-100 {
+  background-color: #1a2740 !important;
+  color: #dbe7f7;
+}
+
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+html.dark .text-gray-700,
+html.dark .text-gray-600,
+html.dark .text-gray-500,
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300,
+html.dark .border-slate-200 {
+  border-color: #334155 !important;
+}
+
+html.dark .hover\:bg-gray-50:hover,
+html.dark .hover\:bg-gray-100:hover {
+  background-color: #1e293b !important;
+}
+
+html.dark .shadow,
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl,
+html.dark .shadow-sm {
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.35) !important;
+}
+
+/* Animation delays for footer background elements */
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}

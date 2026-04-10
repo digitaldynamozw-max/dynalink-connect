@@ -1,17 +1,32 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { SelectedProductOption } from '@/lib/product-options'
 
 export interface CartItem {
   id: string
+  productId: string
   name: string
   price: number
+  basePrice?: number
   quantity: number
   image?: string
+  vendorId?: string | null
+  vendorName?: string | null
+  vendorAddress?: string | null
+  selectedOptions?: SelectedProductOption[]
+  selectedOptionsSummary?: string
+}
+
+type AddCartItemInput = Omit<CartItem, 'quantity'>
+
+interface AddItemResult {
+  ok: boolean
+  error?: string
 }
 
 interface CartStore {
   items: CartItem[]
-  addItem: (item: Omit<CartItem, 'quantity'>) => void
+  addItem: (item: AddCartItemInput) => AddItemResult
   removeItem: (id: string) => void
   updateQuantity: (id: string, quantity: number) => void
   clearCart: () => void
@@ -24,6 +39,17 @@ export const useCartStore = create<CartStore>()(
       items: [],
       addItem: (item) => {
         const items = get().items
+        const currentStoreKey = items[0]?.vendorId || 'admin-store'
+        const nextStoreKey = item.vendorId || 'admin-store'
+        if (items.length > 0 && currentStoreKey !== nextStoreKey) {
+          const currentStoreName = items[0]?.vendorName || 'Admin Store'
+          const nextStoreName = item.vendorName || 'Admin Store'
+          return {
+            ok: false,
+            error: `You can only order from one store at a time. Clear your cart to switch from ${currentStoreName} to ${nextStoreName}.`,
+          }
+        }
+
         const existing = items.find(i => i.id === item.id)
         if (existing) {
           set({
@@ -34,6 +60,7 @@ export const useCartStore = create<CartStore>()(
         } else {
           set({ items: [...items, { ...item, quantity: 1 }] })
         }
+        return { ok: true }
       },
       removeItem: (id) => {
         set({ items: get().items.filter(i => i.id !== id) })

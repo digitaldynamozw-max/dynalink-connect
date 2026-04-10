@@ -1,15 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Package, ShoppingCart, MapPin, DollarSign } from 'lucide-react'
+import Link from 'next/link'
+import Image from 'next/image'
+import { Bell, DollarSign, MapPin, Package, Settings, ShoppingCart } from 'lucide-react'
 import { ImpersonationBanner } from '@/components/impersonation-banner'
+import {
+  DAY_KEYS,
+  formatHoursLabel,
+  getStoreAvailability,
+  parseWeeklyHours,
+} from '@/lib/store-hours'
 
 interface VendorData {
   id: string
   vendorName: string
   vendorImage?: string
+  storeBannerImage?: string
   vendorDescription?: string
   vendorJoinedAt?: Date
   storeCity?: string
@@ -20,6 +29,8 @@ interface VendorData {
   vendorVerified?: boolean
   commissionRate?: number
   isVendor?: boolean
+  weeklyOpeningHours?: string | null
+  temporarilyClosed?: boolean
 }
 
 interface ProductData {
@@ -27,48 +38,76 @@ interface ProductData {
   name: string
   price: number
   stock: number
-  category?: string
+  rating?: number
+  averageRating?: number
+  reviewCount?: number
+  reviews?: Array<{
+    id: string
+    rating: number
+    title: string
+    comment: string
+    verified: boolean
+    createdAt: string
+    user?: {
+      name?: string | null
+      email?: string | null
+    } | null
+  }>
 }
 
 interface OrderData {
   id: string
   orderId: string
-  product: ProductData
+  orderNumber?: string
   quantity: number
   price: number
   status: string
-  order?: { total?: number }
+  order?: { total?: number; createdAt?: string }
+  product: ProductData
+}
+
+interface VendorNotification {
+  id: string
+  title: string
+  message: string
+  createdAt: string
 }
 
 export default function VendorDashboard() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
   const [vendor, setVendor] = useState<VendorData | null>(null)
   const [products, setProducts] = useState<ProductData[]>([])
   const [orders, setOrders] = useState<OrderData[]>([])
-  const [tab, setTab] = useState('overview')
+  const [notifications, setNotifications] = useState<VendorNotification[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (status === 'loading') {
+      return
+    }
+
     if (!session?.user?.email) {
       router.push('/auth/signin')
       return
     }
 
-    fetchVendorData()
-  }, [session?.user?.email, router])
+    void fetchVendorData()
+  }, [router, session?.user?.email, status])
 
-  const fetchVendorData = async () => {
+  async function fetchVendorData() {
     try {
-      const [vendorRes, productsRes, ordersRes] = await Promise.all([
+      const [vendorRes, productsRes, ordersRes, notificationsRes] = await Promise.all([
         fetch('/api/vendor/register'),
         fetch('/api/vendor/products'),
-        fetch('/api/vendor/orders')
+        fetch('/api/vendor/orders'),
+        fetch('/api/vendor/notifications'),
       ])
 
       if (vendorRes.ok) setVendor(await vendorRes.json())
       if (productsRes.ok) setProducts(await productsRes.json())
       if (ordersRes.ok) setOrders(await ordersRes.json())
+      if (notificationsRes.ok) setNotifications(await notificationsRes.json())
     } catch (error) {
       console.error('Failed to fetch vendor data:', error)
     } finally {
@@ -76,9 +115,49 @@ export default function VendorDashboard() {
     }
   }
 
-  if (loading) {
+  const totalSales = useMemo(
+    () =>
+      Array.from(new Map(orders.map((item) => [item.orderId, item.order?.total || 0])).values()).reduce(
+        (sum, orderTotal) => sum + orderTotal,
+        0
+      ),
+    [orders]
+  )
+  const totalOrders = useMemo(() => new Set(orders.map((item) => item.orderId)).size, [orders])
+  const activeProducts = useMemo(() => products.filter((product) => product.stock > 0).length, [products])
+  const totalReviews = useMemo(
+    () => products.reduce((sum, product) => sum + (product.reviewCount || 0), 0),
+    [products]
+  )
+  const averageRating = useMemo(() => {
+    if (!totalReviews) {
+      return 0
+    }
+
+    const weightedTotal = products.reduce(
+      (sum, product) => sum + (product.averageRating || 0) * (product.reviewCount || 0),
+      0
+    )
+
+    return weightedTotal / totalReviews
+  }, [products, totalReviews])
+  const recentReviews = useMemo(
+    () =>
+      products
+        .flatMap((product) =>
+          (product.reviews || []).map((review) => ({
+            ...review,
+            productName: product.name,
+          }))
+        )
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .slice(0, 4),
+    [products]
+  )
+
+  if (status === 'loading' || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="theme-app-shell flex min-h-screen items-center justify-center">
         <div className="text-center">Loading...</div>
       </div>
     )
@@ -86,13 +165,13 @@ export default function VendorDashboard() {
 
   if (!vendor?.isVendor) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="theme-app-shell flex min-h-screen items-center justify-center">
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-4">Not a Vendor</h1>
           <p className="text-gray-600 mb-6">You need to register as a vendor first.</p>
           <button
             onClick={() => router.push('/vendor/register')}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
+            className="theme-accent-btn rounded-lg px-6 py-3 text-white"
           >
             Register as Vendor
           </button>
@@ -101,543 +180,241 @@ export default function VendorDashboard() {
     )
   }
 
-  const totalSales = orders.reduce((sum, item) => sum + (item.order?.total || 0), 0)
-  const totalOrders = new Set(orders.map(item => item.orderId)).size
-  const totalProducts = products.length
+  const availability = getStoreAvailability(vendor.weeklyOpeningHours, vendor.temporarilyClosed)
+  const weeklyHours = parseWeeklyHours(vendor.weeklyOpeningHours)
+  const recentOrders = orders.slice(0, 6)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="theme-app-shell min-h-screen">
       <ImpersonationBanner />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center space-x-4">
-            {vendor.vendorImage && (
-              <img
-                src={vendor.vendorImage}
-                alt={vendor.vendorName}
-                className="h-16 w-16 rounded-lg object-cover"
-              />
-            )}
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900">{vendor.vendorName}</h1>
-              <p className="text-gray-600">{vendor.vendorDescription}</p>
-              <p className="text-sm text-gray-500 mt-1">
-                Joined {vendor.vendorJoinedAt ? new Date(vendor.vendorJoinedAt).toLocaleDateString() : 'N/A'}
-              </p>
-            </div>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Total Products</p>
-                <p className="text-3xl font-bold text-gray-900">{totalProducts}</p>
-              </div>
-              <Package className="h-10 w-10 text-blue-600 opacity-50" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Total Orders</p>
-                <p className="text-3xl font-bold text-gray-900">{totalOrders}</p>
-              </div>
-              <ShoppingCart className="h-10 w-10 text-green-600 opacity-50" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Total Sales</p>
-                <p className="text-3xl font-bold text-gray-900">${totalSales.toFixed(2)}</p>
-              </div>
-              <DollarSign className="h-10 w-10 text-purple-600 opacity-50" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Store Address</p>
-                <p className="text-sm font-semibold text-gray-900">{vendor.storeCity}, {vendor.storeState}</p>
-              </div>
-              <MapPin className="h-10 w-10 text-red-600 opacity-50" />
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="border-b border-gray-200 px-6">
-            <nav className="flex space-x-8 overflow-x-auto" aria-label="Tabs">
-              {['overview', 'products', 'orders', 'delivery', 'payouts', 'settings'].map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm capitalize whitespace-nowrap ${
-                    tab === t
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </nav>
-          </div>
-
-          <div className="p-6">
-            {tab === 'products' && <ProductsTab products={products} />}
-            {tab === 'orders' && <OrdersTab orders={orders} />}
-            {tab === 'delivery' && <DeliveryTab />}
-            {tab === 'payouts' && <PayoutsTab />}
-            {tab === 'settings' && <SettingsTab />}
-            {tab === 'overview' && <OverviewTab vendor={vendor} products={products} />}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function OverviewTab({ vendor, products }: { vendor: VendorData; products: ProductData[] }) {
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <h3 className="font-semibold text-gray-900 mb-4">Store Information</h3>
-          <div className="space-y-2 text-sm">
-            <p><span className="font-semibold">Address:</span> {vendor.storeAddress}</p>
-            <p><span className="font-semibold">City:</span> {vendor.storeCity}, {vendor.storeState} {vendor.storeZipCode}</p>
-            <p><span className="font-semibold">Phone:</span> {vendor.vendorPhoneNumber}</p>
-            <p><span className="font-semibold">Status:</span> {vendor.vendorVerified ? '✓ Verified' : 'Pending verification'}</p>
-          </div>
-        </div>
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <h3 className="font-semibold text-gray-900 mb-4">Commission & Policy</h3>
-          <div className="space-y-2 text-sm">
-            <p><span className="font-semibold">Commission Rate:</span> {vendor.commissionRate}%</p>
-            <p><span className="font-semibold">Active Products:</span> {products.filter((p) => p.stock > 0).length}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ProductsTab({ products }: { products: ProductData[] }) {
-  return (
-    <div>
-      <div className="mb-4">
-        <button
-          onClick={() => window.location.href = '/vendor/products/new'}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          + Add Product
-        </button>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Product</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Price</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Stock</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((product) => (
-              <tr key={product.id} className="border-t border-gray-200">
-                <td className="px-6 py-4">{product.name}</td>
-                <td className="px-6 py-4">${product.price.toFixed(2)}</td>
-                <td className="px-6 py-4">{product.stock}</td>
-                <td className="px-6 py-4 text-sm">
-                  <button className="text-blue-600 hover:text-blue-700 mr-4">Edit</button>
-                  <button className="text-red-600 hover:text-red-700">Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function OrdersTab({ orders }: { orders: OrderData[] }) {
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
-  const [newStatus, setNewStatus] = useState('shipped')
-  const [loading, setLoading] = useState(false)
-  const [updatedOrders, setUpdatedOrders] = useState(orders)
-
-  const toggleItem = (itemId: string) => {
-    const updated = new Set(selectedItems)
-    if (updated.has(itemId)) {
-      updated.delete(itemId)
-    } else {
-      updated.add(itemId)
-    }
-    setSelectedItems(updated)
-  }
-
-  const handleBulkUpdate = async () => {
-    if (selectedItems.size === 0) {
-      alert('Please select at least one item')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const itemIds = Array.from(selectedItems)
-      const itemIdToOrderId: { [key: string]: string } = {}
-      updatedOrders.forEach((item) => {
-        itemIdToOrderId[item.id] = item.orderId
-      })
-
-      const response = await fetch(`/api/vendor/orders/${itemIdToOrderId[itemIds[0]]}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: newStatus,
-          itemIds: itemIds
-        })
-      })
-
-      if (response.ok) {
-        // Update local state
-        await response.json()
-        setUpdatedOrders((prev) =>
-          prev.map(item =>
-            itemIds.includes(item.id) ? { ...item, status: newStatus } : item
-          )
-        )
-        setSelectedItems(new Set())
-        alert(`Updated ${selectedItems.size} item(s) to ${newStatus}`)
-      } else {
-        alert('Failed to update status')
-      }
-    } catch (error) {
-      console.error('Error updating status:', error)
-      alert('Error updating status')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div>
-      {selectedItems.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-blue-900">{selectedItems.size} item(s) selected</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={newStatus}
-              onChange={(e) => setNewStatus(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              title="Select order status"
-              aria-label="Order status"
-            >
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="shipped">Shipped</option>
-              <option value="delivered">Delivered</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <button
-              onClick={handleBulkUpdate}
-              disabled={loading}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? 'Updating...' : 'Update Status'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="overflow-x-auto">
-        <table className="min-w-full">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-4 py-3 text-left">
-                <input
-                  type="checkbox"
-                  checked={selectedItems.size === updatedOrders.length && updatedOrders.length > 0}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedItems(new Set(updatedOrders.map((item) => item.id)))
-                    } else {
-                      setSelectedItems(new Set())
-                    }
-                  }}
-                  className="rounded"
-                  title="Select all orders"
-                  aria-label="Select all orders"
-                />
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Order ID</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Product</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Qty</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Price</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {updatedOrders.map((item) => (
-              <tr key={item.id} className="border-t border-gray-200 hover:bg-gray-50">
-                <td className="px-4 py-4">
-                  <input
-                    type="checkbox"
-                    checked={selectedItems.has(item.id)}
-                    onChange={() => toggleItem(item.id)}
-                    className="rounded"
-                    title={`Select order ${item.orderId.slice(0, 8)}`}
-                    aria-label={`Select order ${item.orderId.slice(0, 8)}`}
-                  />
-                </td>
-                <td className="px-6 py-4 text-sm font-mono">{item.orderId.slice(0, 8)}</td>
-                <td className="px-6 py-4">{item.product.name}</td>
-                <td className="px-6 py-4">{item.quantity}</td>
-                <td className="px-6 py-4">${(item.price * item.quantity).toFixed(2)}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-3 py-1 rounded text-xs font-semibold ${
-                    item.status === 'delivered' ? 'bg-green-100 text-green-800' :
-                    item.status === 'shipped' ? 'bg-blue-100 text-blue-800' :
-                    item.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
-                    item.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {item.status || 'pending'}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function DeliveryTab() {
-  const [zones, setZones] = useState<Array<{id: string; name: string; fee: number; zipCode?: string; city?: string; baseFee?: number; perKmFee?: number; active?: boolean}>>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetch('/api/vendor/delivery-zones')
-      .then(r => r.json())
-      .then(setZones)
-      .finally(() => setLoading(false))
-  }, [])
-
-  return (
-    <div>
-      <div className="mb-4">
-        <button
-          onClick={() => window.location.href = '/vendor/delivery-zones/new'}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          + Add Delivery Zone
-        </button>
-      </div>
-      {!loading && (
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold">Zip Code</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">City</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">Base Fee</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">Per KM</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {zones.map((zone) => (
-                <tr key={zone.id} className="border-t border-gray-200">
-                  <td className="px-6 py-4 font-mono">{zone.zipCode}</td>
-                  <td className="px-6 py-4">{zone.city}</td>
-                  <td className="px-6 py-4">${zone.baseFee}</td>
-                  <td className="px-6 py-4">${zone.perKmFee}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      zone.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {zone.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function PayoutsTab() {
-  const [payoutData, setPayoutData] = useState<{payouts: Array<{id: string; amount: number; date: string; status: string}>; pendingEarnings: number; commissionRate: number} | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [requesting, setRequesting] = useState(false)
-
-  useEffect(() => {
-    fetchPayoutData()
-  }, [])
-
-  const fetchPayoutData = async () => {
-    try {
-      const res = await fetch('/api/vendor/payouts')
-      if (res.ok) {
-        setPayoutData(await res.json())
-      }
-    } catch (error) {
-      console.error('Failed to fetch payout data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleRequestPayout = async () => {
-    if (!payoutData || payoutData.pendingEarnings < 10) {
-      alert('Minimum payout amount is $10')
-      return
-    }
-
-    setRequesting(true)
-    try {
-      const res = await fetch('/api/vendor/payouts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMethod: 'bank_transfer' })
-      })
-
-      if (res.ok) {
-        const response = await res.json()
-        alert(response.message)
-        fetchPayoutData()
-      } else {
-        alert('Failed to request payout')
-      }
-    } catch (error) {
-      console.error('Error requesting payout:', error)
-      alert('Error requesting payout')
-    } finally {
-      setRequesting(false)
-    }
-  }
-
-  if (loading) {
-    return <div className="text-center py-8">Loading...</div>
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Earnings Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <p className="text-sm text-blue-700 font-medium mb-2">Pending Earnings</p>
-          <p className="text-3xl font-bold text-blue-900">${(payoutData?.pendingEarnings || 0).toFixed(2)}</p>
-          <p className="text-xs text-blue-600 mt-2">Available for payout</p>
-        </div>
-
-        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-          <p className="text-sm text-green-700 font-medium mb-2">Total Paid</p>
-          <p className="text-3xl font-bold text-green-900">
-            ${payoutData?.payouts
-              .filter((p) => p.status === 'completed')
-              .reduce((sum: number, p) => sum + p.amount, 0)
-              .toFixed(2) || '0.00'}
-          </p>
-          <p className="text-xs text-green-600 mt-2">Completed payouts</p>
-        </div>
-
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
-          <p className="text-sm text-purple-700 font-medium mb-2">Commission Rate</p>
-          <p className="text-3xl font-bold text-purple-900">{payoutData?.commissionRate || 0}%</p>
-          <p className="text-xs text-purple-600 mt-2">Platform commission</p>
-        </div>
-      </div>
-
-      {/* Request Payout Button */}
-      {(payoutData?.pendingEarnings || 0) > 10 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-yellow-900">Ready for payout!</p>
-            <p className="text-sm text-yellow-700">You have ${(payoutData?.pendingEarnings || 0).toFixed(2)} available</p>
-          </div>
-          <button
-            onClick={handleRequestPayout}
-            disabled={requesting}
-            className="bg-yellow-600 text-white px-6 py-2 rounded-lg hover:bg-yellow-700 disabled:opacity-50"
-          >
-            {requesting ? 'Processing...' : 'Request Payout'}
-          </button>
-        </div>
-      )}
-
-      {/* Payout History */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Payout History</h3>
-        {payoutData?.payouts && payoutData.payouts.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Date</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Amount</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Orders</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Method</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payoutData.payouts.map((payout) => (
-                  <tr key={payout.id} className="border-t border-gray-200">
-                    <td className="px-6 py-4 text-sm">
-                      {payout.date}
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-green-600">
-                      ${payout.amount.toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 text-sm">{payout.ordersIncluded}</td>
-                    <td className="px-6 py-4 text-sm">{payout.paymentMethod || 'N/A'}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded text-xs font-semibold ${
-                        payout.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        payout.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {payout.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div className="theme-hero relative overflow-hidden text-white">
+        {vendor.storeBannerImage ? (
+          <>
+            <Image src={vendor.storeBannerImage} alt={`${vendor.vendorName} banner`} fill priority className="object-cover" />
+            <div className="absolute inset-0 bg-slate-950/65" />
+          </>
         ) : (
-          <div className="text-center py-8 text-gray-500">
-            <p>No payouts yet</p>
-          </div>
+          <div className="absolute inset-0 bg-[linear-gradient(135deg,#18222b,#2d7285_56%,#18222b)]" />
         )}
+
+        <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              {vendor.vendorImage && (
+                <Image
+                  src={vendor.vendorImage}
+                  alt={vendor.vendorName}
+                  width={72}
+                  height={72}
+                  className="h-18 w-18 rounded-xl border border-white/20 object-cover"
+                />
+              )}
+              <div>
+                <h1 className="text-4xl font-bold">{vendor.vendorName}</h1>
+                <p className="mt-2 max-w-2xl text-sm text-slate-200">
+                  {vendor.vendorDescription || 'Manage your storefront, catalog, and order fulfillment from one place.'}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3 text-sm">
+                  <span className="rounded-full bg-white/10 px-3 py-1">
+                    {vendor.vendorVerified ? 'Verified vendor' : 'Pending verification'}
+                  </span>
+                  <span className="rounded-full bg-white/10 px-3 py-1">
+                    {availability.message}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Link href="/vendor/catalog" className="theme-secondary-btn rounded-lg px-4 py-2.5 text-sm font-semibold">
+                Manage Catalog
+              </Link>
+              <Link href="/vendor/orders" className="theme-accent-btn rounded-lg px-4 py-2.5 text-sm font-semibold">
+                Review Orders
+              </Link>
+              <Link href="/vendor/settings" className="rounded-lg border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10">
+                Store Settings
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+          <StatCard icon={Package} label="Products" value={activeProducts} helper={`${products.length} total listed`} />
+          <StatCard icon={ShoppingCart} label="Orders" value={totalOrders} helper={`${recentOrders.length} recent shown`} />
+          <StatCard icon={DollarSign} label="Sales" value={`$${totalSales.toFixed(2)}`} helper="Gross order revenue" />
+          <StatCard
+            icon={Bell}
+            label="Rating"
+            value={totalReviews ? averageRating.toFixed(1) : '0.0'}
+            helper={totalReviews ? `${totalReviews} reviews tracked` : 'No reviews yet'}
+          />
+          <StatCard icon={MapPin} label="Base" value={[vendor.storeCity, vendor.storeState].filter(Boolean).join(', ') || 'Not set'} helper="Primary store location" />
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <section className="theme-panel rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Recent Orders</h2>
+                <p className="mt-1 text-xs text-slate-600">
+                  Vendors manage acceptance and completion. Delivery dispatch is handled by admin.
+                </p>
+              </div>
+              <Link href="/vendor/orders" className="text-sm font-semibold text-[var(--brand-highlight)] hover:text-[var(--brand-accent)]">
+                View all
+              </Link>
+            </div>
+
+            {recentOrders.length === 0 ? (
+              <p className="mt-6 text-sm text-slate-500">No recent orders yet.</p>
+            ) : (
+              <div className="mt-4 space-y-2.5">
+                {recentOrders.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{item.product.name}</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Order #{item.orderId.slice(0, 8)} • Qty {item.quantity}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-slate-900">${(item.price * item.quantity).toFixed(2)}</p>
+                        <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{item.status}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <div className="space-y-4">
+            <section className="theme-panel rounded-2xl p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Ratings & Reviews</h2>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Latest customer feedback across your listed products.
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-slate-900">{totalReviews ? averageRating.toFixed(1) : '0.0'}</p>
+                  <p className="text-xs text-slate-500">{totalReviews} review{totalReviews === 1 ? '' : 's'}</p>
+                </div>
+              </div>
+
+              {recentReviews.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No customer reviews yet.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {recentReviews.map((review) => (
+                    <div key={review.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900">{review.title}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {review.productName} | {review.user?.name || review.user?.email || 'Customer'}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-semibold text-amber-600">{review.rating}/5</p>
+                          <p className="mt-1 text-[11px] text-slate-400">{new Date(review.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-700">{review.comment}</p>
+                      {review.verified ? (
+                        <p className="mt-2 text-[11px] font-medium text-emerald-600">Verified purchase</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="theme-panel rounded-2xl p-4">
+              <div className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-[var(--brand-highlight)]" />
+                <h2 className="text-lg font-bold text-slate-900">Notifications</h2>
+              </div>
+              {notifications.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No notifications yet.</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {notifications.slice(0, 4).map((notification) => (
+                    <div key={notification.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2.5">
+                      <p className="text-sm font-semibold text-slate-900">{notification.title}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-600">{notification.message}</p>
+                      <p className="mt-1.5 text-[11px] text-slate-400">
+                        {new Date(notification.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="theme-panel rounded-2xl p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Store Schedule</h2>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Keep your store hours current so admin can coordinate fulfillment.
+                  </p>
+                </div>
+                <Link href="/vendor/settings" className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--brand-highlight)] hover:text-[var(--brand-accent)]">
+                  <Settings className="h-4 w-4" />
+                  Edit
+                </Link>
+              </div>
+              <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--brand-accent-soft)] px-3 py-2.5 text-sm text-slate-700">
+                {availability.message}
+              </div>
+              <div className="mt-3 space-y-1.5 text-sm text-slate-700">
+                {DAY_KEYS.map((day) => (
+                  <div key={day} className="flex items-center justify-between gap-4">
+                    <span className="font-medium capitalize">{day}</span>
+                    <span>
+                      {weeklyHours[day].isOpen
+                        ? `${formatHoursLabel(weeklyHours[day].open)} - ${formatHoursLabel(weeklyHours[day].close)}`
+                        : 'Closed'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-function SettingsTab() {
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: typeof Package
+  label: string
+  value: string | number
+  helper?: string
+}) {
   return (
-    <div className="space-y-6">
-      <p className="text-gray-600">Coming soon: Edit store profile, commission rates, and payment details.</p>
+    <div className="theme-panel rounded-2xl p-4">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">{label}</p>
+          <p className="mt-1.5 text-2xl font-bold text-slate-900">{value}</p>
+          {helper ? <p className="mt-1 text-[11px] text-slate-500">{helper}</p> : null}
+        </div>
+        <Icon className="h-8 w-8 text-[var(--brand-highlight)] opacity-50" />
+      </div>
     </div>
   )
 }

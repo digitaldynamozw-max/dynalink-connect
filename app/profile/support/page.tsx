@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Mail, Phone, MessageSquare, Clock, ChevronDown, Send, CheckCircle, AlertCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertCircle, CheckCircle, ChevronDown, Clock, LifeBuoy, Mail, MessageSquare, Phone, Send } from 'lucide-react'
+import { ProfileEmptyState, ProfileMessage, ProfilePageShell, ProfilePanel, ProfileStatCard } from '@/components/profile-ui'
 
 interface SupportTicket {
   id: string
@@ -13,14 +14,14 @@ interface SupportTicket {
   createdAt: string
 }
 
-interface Stats {
+interface SupportStats {
   tickets: SupportTicket[]
   open: number
   resolved: number
 }
 
 export default function Support() {
-  const [stats, setStats] = useState<Stats | null>(null)
+  const [stats, setStats] = useState<SupportStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeAccordion, setActiveAccordion] = useState<number | null>(null)
@@ -32,34 +33,24 @@ export default function Support() {
   const faqs = [
     {
       id: 1,
-      question: 'How do I reset my password?',
-      answer: 'Go to the Edit Profile section, scroll to "Change Password" and enter your current password followed by your new password. Click "Save Changes" when done.'
+      question: 'Password reset',
+      answer: 'Use the security panel on your main account overview page and update the password from there.',
     },
     {
       id: 2,
-      question: 'How can I update my profile picture?',
-      answer: 'Visit your Edit Profile page. On the left side, there\'s a profile picture section where you can click "Upload Picture" and select an image from your device.'
+      question: 'Profile picture',
+      answer: 'Open the overview page in My Account and use the upload action inside the profile summary card.',
     },
     {
       id: 3,
-      question: 'What can I do with promo codes?',
-      answer: 'Promo codes provide discounts on your purchases. You can view all your active codes in the "My Promo-codes" section and use them during checkout.'
+      question: 'Promo codes',
+      answer: 'Promo codes give discounts during checkout. Your active offers are listed in the Promo Codes section.',
     },
     {
       id: 4,
-      question: 'How does the referral program work?',
-      answer: 'In the "Invite a Friend" section, share your referral link with friends. When they sign up and make their first purchase, you both receive rewards!'
+      question: 'Referral rewards',
+      answer: 'Share your invite link or email a friend directly. When they complete the referral flow, your reward is added.',
     },
-    {
-      id: 5,
-      question: 'How do I contact customer support?',
-      answer: 'You can reach our support team via email at support@dynalinkconnect.com, through the live chat, or by filling out the contact form below.'
-    },
-    {
-      id: 6,
-      question: 'How long does it take to process refunds?',
-      answer: 'Refunds are typically processed within 5-7 business days after approval. You\'ll receive an email confirmation once your refund has been initiated.'
-    }
   ]
 
   useEffect(() => {
@@ -69,13 +60,14 @@ export default function Support() {
         if (!res.ok) throw new Error('Failed to fetch tickets')
         const data = await res.json()
         setStats(data)
-      } catch (err) {
+      } catch {
         setError('Failed to load support tickets')
       } finally {
         setLoading(false)
       }
     }
-    fetchTickets()
+
+    void fetchTickets()
   }, [])
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -86,7 +78,7 @@ export default function Support() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.subject || !formData.message) {
-      setMessage({ type: 'error', text: 'Please fill in all fields' })
+      setMessage({ type: 'error', text: 'Please fill in all fields.' })
       return
     }
 
@@ -95,330 +87,207 @@ export default function Support() {
       const res = await fetch('/api/profile/support', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       })
       if (!res.ok) throw new Error('Failed to submit ticket')
       setSubmitted(true)
       setFormData({ subject: '', message: '', priority: 'normal' })
-      
-      // Refresh tickets
+
       const refreshRes = await fetch('/api/profile/support')
       if (refreshRes.ok) {
         const data = await refreshRes.json()
         setStats(data)
       }
-      
-      setTimeout(() => setSubmitted(false), 3000)
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to submit ticket' })
+
+      window.setTimeout(() => setSubmitted(false), 3000)
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to submit ticket.' })
     } finally {
       setSubmitting(false)
     }
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center p-6 min-h-screen">
-        <div className="animate-spin">
-          <div className="w-12 h-12 border-4 border-blue-300 border-t-blue-600 rounded-full"></div>
-        </div>
-      </div>
-    )
+    return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Loading support...</div>
   }
 
   if (!stats) {
-    return (
-      <div className="flex items-center justify-center p-6 min-h-screen">
-        <div className="text-red-600">{error || 'Failed to load data'}</div>
-      </div>
-    )
+    return <ProfileEmptyState title="Support unavailable" description={error || 'We could not load your support workspace.'} />
   }
 
   return (
-    <div className="flex flex-col gap-8 p-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">Support & Help</h1>
-        <p className="text-gray-600">Get help with your account, orders, and more</p>
+    <ProfilePageShell
+      eyebrow="Support"
+      title="Support & Help"
+      description="Reach the team, submit tickets, and browse the most common help topics in one place."
+    >
+      {message ? <ProfileMessage type={message.type} text={message.text} /> : null}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <ProfileStatCard label="Email Support" value="24h" helper="Average first response window." accent="blue" icon={<Mail className="h-5 w-5" />} />
+        <ProfileStatCard label="Open Tickets" value={stats.open} helper="Issues still awaiting a final answer." accent="orange" icon={<LifeBuoy className="h-5 w-5" />} />
+        <ProfileStatCard label="Resolved Tickets" value={stats.resolved} helper="Tickets that have already been closed." accent="emerald" icon={<CheckCircle className="h-5 w-5" />} />
       </div>
 
-      {/* Contact Options */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200">
-          <Mail className="w-8 h-8 text-blue-600 mb-3" />
-          <h3 className="font-semibold text-gray-900 mb-2">Email Support</h3>
-          <p className="text-sm text-gray-700 mb-4">Response time: 24 hours</p>
-          <a href="mailto:support@dynalinkconnect.com" className="text-blue-600 font-semibold hover:text-blue-700">
-            support@dynalinkconnect.com
-          </a>
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200">
-          <MessageSquare className="w-8 h-8 text-purple-600 mb-3" />
-          <h3 className="font-semibold text-gray-900 mb-2">Live Chat</h3>
-          <p className="text-sm text-gray-700 mb-4">Response time: 5-10 minutes</p>
-          <button className="text-purple-600 font-semibold hover:text-purple-700">
-            Start Chat
-          </button>
-        </div>
-
-        <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200">
-          <Phone className="w-8 h-8 text-green-600 mb-3" />
-          <h3 className="font-semibold text-gray-900 mb-2">Phone Support</h3>
-          <p className="text-sm text-gray-700 mb-4">Mon-Fri, 9am-6pm EST</p>
-          <p className="text-green-600 font-semibold">+1 (800) 555-1234</p>
-        </div>
-      </div>
-
-      {/* Support Hours */}
-      <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
-        <div className="flex items-start gap-3">
-          <Clock className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-2">Support Hours</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-700">
-              <div>
-                <p className="font-medium">Monday - Friday</p>
-                <p>9:00 AM - 6:00 PM EST</p>
-              </div>
-              <div>
-                <p className="font-medium">Saturday</p>
-                <p>10:00 AM - 4:00 PM EST</p>
-              </div>
-              <div>
-                <p className="font-medium">Sunday</p>
-                <p>12:00 PM - 5:00 PM EST</p>
-              </div>
-              <div>
-                <p className="font-medium">Holidays</p>
-                <p>Closed</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Ticket Summary */}
-      {stats.tickets.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-6 rounded-xl border border-yellow-200">
-            <p className="text-sm text-yellow-700 font-semibold mb-1">Open Tickets</p>
-            <p className="text-3xl font-bold text-yellow-600">{stats.open}</p>
-          </div>
-          <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200">
-            <p className="text-sm text-green-700 font-semibold mb-1">Resolved Tickets</p>
-            <p className="text-3xl font-bold text-green-600">{stats.resolved}</p>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Contact Form */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Submit a Support Ticket</h2>
-
-          {message && (
-            <div
-              className={`mb-6 flex items-center gap-2 p-4 rounded-lg ${
-                message.type === 'success'
-                  ? 'bg-green-50 text-green-800 border border-green-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
-              }`}
-            >
-              {message.type === 'error' && <AlertCircle className="w-5 h-5" />}
-              {message.text}
-            </div>
-          )}
-
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.9fr]">
+        <ProfilePanel title="Submit a Support Ticket" description="Share the issue clearly and the team can pick it up faster.">
           {submitted ? (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-              <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
-              <p className="text-green-800 font-semibold mb-2">✓ Ticket Submitted Successfully</p>
-              <p className="text-green-700 text-sm">We'll get back to you within 24 hours. Check your email for updates.</p>
+            <div className="rounded-[1.15rem] border border-emerald-200 bg-emerald-50 p-5 text-center">
+              <CheckCircle className="mx-auto h-10 w-10 text-emerald-600" />
+              <p className="mt-2.5 text-sm font-semibold text-emerald-900">Ticket submitted successfully</p>
+              <p className="mt-1 text-xs text-emerald-700">We&apos;ll get back to you shortly.</p>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="subject" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Subject
-                </label>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Subject</span>
                 <input
                   type="text"
-                  id="subject"
                   name="subject"
                   value={formData.subject}
                   onChange={handleFormChange}
                   placeholder="How can we help?"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
                   required
                 />
-              </div>
-
-              <div>
-                <label htmlFor="priority" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Priority
-                </label>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Priority</span>
                 <select
-                  id="priority"
                   name="priority"
                   value={formData.priority}
                   onChange={handleFormChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
                 >
                   <option value="low">Low</option>
                   <option value="normal">Normal</option>
                   <option value="high">High</option>
                   <option value="urgent">Urgent</option>
                 </select>
-              </div>
-
-              <div>
-                <label htmlFor="message" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Message
-                </label>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Message</span>
                 <textarea
-                  id="message"
                   name="message"
                   value={formData.message}
                   onChange={handleFormChange}
-                  placeholder="Please describe your issue or question in detail..."
-                  rows={6}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  placeholder="Please describe the issue in detail."
+                  rows={5}
+                  className="w-full rounded-[1rem] border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400"
                   required
                 />
-              </div>
-
+              </label>
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
               >
-                <Send className="w-4 h-4" />
-                {submitting ? 'Submitting...' : 'Submit Ticket'}
+                <Send className="h-4 w-4" />
+                {submitting ? 'Submitting...' : 'Submit ticket'}
               </button>
             </form>
           )}
-        </div>
+        </ProfilePanel>
 
-        {/* Quick Links */}
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Quick Links</h3>
-          <div className="space-y-3">
-            <a
-              href="/profile/about"
-              className="block p-3 rounded-lg bg-blue-50 hover:bg-blue-100 transition text-blue-700 font-semibold"
-            >
-              About DynaLink Connect
-            </a>
-            <a
-              href="/products"
-              className="block p-3 rounded-lg bg-purple-50 hover:bg-purple-100 transition text-purple-700 font-semibold"
-            >
-              Browse Products
-            </a>
-            <a
-              href="/orders"
-              className="block p-3 rounded-lg bg-green-50 hover:bg-green-100 transition text-green-700 font-semibold"
-            >
-              Your Orders
-            </a>
-            <a
-              href="/profile/promocodes"
-              className="block p-3 rounded-lg bg-orange-50 hover:bg-orange-100 transition text-orange-700 font-semibold"
-            >
-              Promo Codes
-            </a>
-            <a
-              href="/cart"
-              className="block p-3 rounded-lg bg-pink-50 hover:bg-pink-100 transition text-pink-700 font-semibold"
-            >
-              Shopping Cart
-            </a>
-          </div>
+        <div className="space-y-6">
+          <ProfilePanel title="Contact Options" description="Use the support channel that best matches the urgency of your issue.">
+            <div className="space-y-2.5">
+              <div className="rounded-[1rem] bg-slate-50 p-3">
+                <div className="flex items-center gap-3">
+                  <Mail className="h-5 w-5 text-blue-600" />
+                  <div>
+                    <p className="font-semibold text-slate-900">Email Support</p>
+                    <p className="text-sm text-slate-500">support@dynalinkconnect.co.zw</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-[1rem] bg-slate-50 p-3">
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="h-5 w-5 text-violet-600" />
+                  <div>
+                    <p className="font-semibold text-slate-900">Live Chat</p>
+                    <p className="text-sm text-slate-500">Fastest for active delivery or order questions.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-[1rem] bg-slate-50 p-3">
+                <div className="flex items-center gap-3">
+                  <Phone className="h-5 w-5 text-emerald-600" />
+                  <div>
+                    <p className="font-semibold text-slate-900">Phone Support</p>
+                    <p className="text-sm text-slate-500">+263719968771</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-[1rem] bg-amber-50 p-3 text-xs text-slate-700">
+                <div className="flex items-center gap-2 font-semibold text-amber-700">
+                  <Clock className="h-4 w-4" />
+                  Typical hours
+                </div>
+                <p className="mt-2">Monday-Friday 9:00 AM - 6:00 PM EST. Weekend coverage is reduced.</p>
+              </div>
+            </div>
+          </ProfilePanel>
+
+          <ProfilePanel title="Support Reference" description="Quick answers to the most common account and reward topics.">
+            <div className="space-y-2.5">
+              {faqs.map((faq) => (
+                <div key={faq.id} className="overflow-hidden rounded-[1rem] border border-slate-200">
+                  <button
+                    onClick={() => setActiveAccordion(activeAccordion === faq.id ? null : faq.id)}
+                    className="flex w-full items-center justify-between bg-slate-50 px-3.5 py-3 text-left text-sm font-semibold text-slate-900"
+                  >
+                    <span>{faq.question}</span>
+                    <ChevronDown className={`h-5 w-5 text-orange-500 transition-transform ${activeAccordion === faq.id ? 'rotate-180' : ''}`} />
+                  </button>
+                  {activeAccordion === faq.id ? <div className="bg-white px-3.5 py-3 text-xs leading-5 text-slate-600">{faq.answer}</div> : null}
+                </div>
+              ))}
+            </div>
+          </ProfilePanel>
         </div>
       </div>
 
-      {/* Your Tickets */}
-      {stats.tickets.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Support Tickets</h2>
-
-          <div className="space-y-4">
+      {stats.tickets.length > 0 ? (
+        <ProfilePanel title="Your Tickets" description="Recent issues, statuses, and any responses from the team.">
+          <div className="space-y-3">
             {stats.tickets.map((ticket) => (
-              <div key={ticket.id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 mb-1">{ticket.subject}</h3>
-                    <p className="text-sm text-gray-600">
-                      Created: {new Date(ticket.createdAt).toLocaleDateString()}
-                    </p>
+              <div key={ticket.id} className="rounded-[1rem] border border-slate-200 p-4">
+                <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">{ticket.subject}</h3>
+                    <p className="mt-1 text-xs text-slate-500">Created {new Date(ticket.createdAt).toLocaleDateString()}</p>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <span
-                      className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                        ticket.status === 'open'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}
-                    >
+                  <div className="flex gap-2">
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${ticket.status === 'open' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
                       {ticket.status === 'open' ? 'Open' : 'Resolved'}
                     </span>
-                    <span
-                      className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                        ticket.priority === 'urgent'
-                          ? 'bg-red-100 text-red-800'
-                          : ticket.priority === 'high'
-                            ? 'bg-orange-100 text-orange-800'
-                            : ticket.priority === 'low'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {ticket.priority.charAt(0).toUpperCase() + ticket.priority.slice(1)}
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {ticket.priority}
                     </span>
                   </div>
                 </div>
-                <p className="text-gray-700 mb-3">{ticket.message}</p>
-                {ticket.response && (
-                  <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-3">
-                    <p className="text-sm font-semibold text-blue-900 mb-1">Response:</p>
-                    <p className="text-sm text-blue-800">{ticket.response}</p>
+                <p className="mt-2.5 text-xs leading-5 text-slate-700">{ticket.message}</p>
+                {ticket.response ? (
+                  <div className="mt-3 rounded-[1rem] border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                    <p className="font-semibold">Response</p>
+                    <p className="mt-1 leading-5">{ticket.response}</p>
                   </div>
-                )}
+                ) : null}
               </div>
             ))}
           </div>
-        </div>
+        </ProfilePanel>
+      ) : (
+        <ProfileEmptyState title="No support tickets yet" description="When you submit your first support request, the conversation history will appear here." />
       )}
 
-      {/* FAQ Section */}
-      <div className="bg-white rounded-xl shadow-lg p-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Frequently Asked Questions</h2>
-
-        <div className="space-y-4">
-          {faqs.map((faq) => (
-            <div key={faq.id} className="border border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition">
-              <button
-                onClick={() => setActiveAccordion(activeAccordion === faq.id ? null : faq.id)}
-                className="w-full flex items-center justify-between p-5 bg-gray-50 hover:bg-gray-100 transition font-semibold text-gray-900"
-              >
-                <span className="text-left">{faq.question}</span>
-                <ChevronDown
-                  className={`w-5 h-5 text-blue-600 transition-transform flex-shrink-0 ${
-                    activeAccordion === faq.id ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-
-              {activeAccordion === faq.id && (
-                <div className="p-5 text-gray-700 border-t border-gray-200 bg-white">
-                  {faq.answer}
-                </div>
-              )}
-            </div>
-          ))}
+      {message?.type === 'error' && !submitted ? (
+        <div className="inline-flex items-center gap-2 text-sm text-rose-600">
+          <AlertCircle className="h-4 w-4" />
+          {message.text}
         </div>
-      </div>
-    </div>
+      ) : null}
+    </ProfilePageShell>
   )
 }

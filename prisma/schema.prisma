@@ -31,6 +31,9 @@ model User {
   vendorName       String?      @unique
   vendorDescription String?
   vendorImage      String?
+  storeBannerImage String?
+  vendorPriority   Int          @default(0)
+  vendorCategory   String?
   storeAddress     String?
   storeCity        String?
   storeState       String?
@@ -41,6 +44,9 @@ model User {
   vendorVerified   Boolean      @default(false)
   vendorJoinedAt   DateTime?
   commissionRate   Float        @default(10)
+  weeklyOpeningHours String?
+  temporarilyClosed Boolean     @default(false)
+  notificationPreferencesJson String?
   
   // Relations
   orders           Order[]
@@ -55,6 +61,7 @@ model User {
   payouts          VendorPayout[]
   deliveryZones    DeliveryZone[] @relation("vendorDeliveryZones")
   orderItems       OrderItem[]
+  notifications    Notification[]
   
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -74,6 +81,8 @@ model Product {
   rating      Float      @default(0)
   averageRating Float    @default(0)
   reviewCount Int        @default(0)
+  optionGroupsJson String?
+  specificationsJson String?
   
   // Vendor relationship (optional for backward compatibility)
   vendorId    String?
@@ -92,6 +101,7 @@ model Product {
 
 model Order {
   id        String      @id @default(cuid())
+  orderNumber String?   @unique
   userId    String
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items     OrderItem[]
@@ -102,6 +112,9 @@ model Order {
   // Delivery tracking
   deliveryAddress String?
   deliveryFee Float     @default(0)
+  platformFee Float     @default(1)
+  fulfillmentMethod String @default("delivery")
+  requestedDeliveryAt DateTime?
   
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
@@ -115,13 +128,29 @@ model OrderItem {
   product   Product @relation(fields: [productId], references: [id])
   vendorId  String?
   vendor    User?   @relation(fields: [vendorId], references: [id])
+  payoutId  String?
+  payout    VendorPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
   quantity  Int
   price     Float
+  selectedOptionsJson String?
+  selectedOptionsSummary String?
   status    String  @default("pending")
+  preparationMinutes Int @default(0)
+  additionalDelayMinutes Int @default(0)
+  estimatedDeliveryMinutes Int?
   deliveryFee Float @default(0)
   vendorEarnings Float @default(0)
+  proofPhotoDataUrl String?
+  proofSignatureName String?
+  proofChecklistJson String?
+  proofSubmittedAt DateTime?
+  proofAuditNote String?
+  updatedAt DateTime @updatedAt
   
+  @@index([orderId])
+  @@index([status])
   @@index([vendorId])
+  @@index([payoutId])
 }
 
 model Rating {
@@ -229,14 +258,73 @@ model VendorPayout {
   id        String  @id @default(cuid())
   vendorId  String
   vendor    User    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  items     OrderItem[]
   amount    Float
-  status    String  @default("pending")
+  status    String  @default("requested")
   ordersIncluded Int @default(0)
   paymentMethod String?
   transactionId String?
+  reviewedAt DateTime?
+  reviewedById String?
+  reviewNotes String?
   processedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
   @@index([vendorId])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  recipientId String?
+  recipient   User?    @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  audience    String   @default("user")
+  channel     String   @default("in_app")
+  title       String
+  message     String
+  orderId     String?
+  orderItemId String?
+  statusFrom  String?
+  statusTo    String?
+  deliveryStatus String?
+  metadata    String?
+  externalMessageId String?
+  read        Boolean  @default(false)
+  sentAt      DateTime?
+  failedAt    DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId])
+  @@index([audience])
+  @@index([channel])
+  @@index([deliveryStatus])
+  @@index([orderItemId, audience])
+  @@index([createdAt])
+}
+
+model SiteSettings {
+  id                   String   @id
+  companyName          String   @default("DynaLink Connect")
+  heroBadge            String   @default("Company Marketplace")
+  heroTitle            String   @default("Welcome to DynaLink Connect")
+  heroSubtitle         String   @default("Fast, reliable delivery from your favorite vendors. Shop everything you need in one place.")
+  heroBackgroundImage  String?
+  heroForegroundImage  String?
+  primaryCtaLabel      String   @default("Shop Now")
+  primaryCtaHref       String   @default("/products")
+  secondaryCtaLabel    String   @default("Become a Vendor")
+  secondaryCtaHref     String   @default("/vendor/register")
+  whatsappNumber       String   @default("1234567890")
+  referralEnabled      Boolean  @default(true)
+  referralRewardAmount Float    @default(25)
+  referralHeadline     String   @default("Referral program is active")
+  platformOrdersPaused Boolean  @default(false)
+  allStoresTemporarilyClosed Boolean @default(false)
+  pickupEnabled        Boolean  @default(true)
+  platformFeePerOrder  Float    @default(1)
+  globalDeliveryEtaMinutes Int  @default(120)
+  googleMapsEmbedUrl   String?
+  platformStoreAddress String?  @default("DynaLink Connect")
+  updatedAt            DateTime @updatedAt
+  createdAt            DateTime @default(now())
 }

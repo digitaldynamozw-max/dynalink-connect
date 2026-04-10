@@ -9,11 +9,20 @@ interface ImportResult {
   errors: string[]
 }
 
+interface ParsedImportProduct {
+  name: string | null
+  description?: string | null
+  price: number | null
+  saleprice?: number | null
+  stock?: number
+  category?: string | null
+  [key: string]: string | number | null | undefined
+}
+
 export function ProductBulkImport() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
-  const [showTemplate, setShowTemplate] = useState(false)
 
   const csvTemplate = `name,description,price,salePrice,stock,category
 Laptop,High-performance laptop,999.99,,10,Electronics
@@ -44,11 +53,14 @@ USB-C Cable,Fast charging cable,14.99,,100,Electronics`
 
       // Parse CSV
       const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
-      const products = []
+      const products: ParsedImportProduct[] = []
 
       for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(',').map(v => v.trim())
-        const product: any = {}
+        const product: ParsedImportProduct = {
+          name: null,
+          price: null,
+        }
 
         headers.forEach((header, idx) => {
           const value = values[idx]
@@ -90,13 +102,6 @@ USB-C Cable,Fast charging cable,14.99,,100,Electronics`
       }
     }
   }
-    } finally {
-      setImporting(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    }
-  }
 
   function downloadTemplate() {
     const element = document.createElement('a')
@@ -111,16 +116,6 @@ USB-C Cable,Fast charging cable,14.99,,100,Electronics`
   return (
     <div className="bg-white rounded-lg shadow p-6 max-w-2xl">
       <h2 className="text-2xl font-bold text-gray-900 mb-4">Bulk Import Products</h2>
-
-      {/* Instructions */}
-      <div className="mb-6">
-        <h3 className="font-semibold text-gray-900 mb-2">How it works:</h3>
-        <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600">
-          <li>Download the CSV template</li>
-          <li>Fill in your product information</li>
-          <li>Upload the CSV file to import all products at once</li>
-        </ol>
-      </div>
 
       {/* Template Section */}
       <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">

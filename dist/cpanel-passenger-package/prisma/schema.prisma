@@ -1,0 +1,320 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String       @id @default(cuid())
+  email            String       @unique
+  name             String?
+  password         String?
+  role             String       @default("user")
+  isActive         Boolean      @default(true)
+  mobileNumber     String?
+  language         String       @default("en")
+  accountBalance   Float        @default(0)
+  profilePicture   String?
+  deliveryAddress  String?
+  customerZipCode  String?
+  firstName        String?
+  lastName         String?
+  
+  // Vendor fields
+  isVendor         Boolean      @default(false)
+  vendorName       String?      @unique
+  vendorDescription String?
+  vendorImage      String?
+  storeBannerImage String?
+  vendorPriority   Int          @default(0)
+  vendorCategory   String?
+  storeAddress     String?
+  storeCity        String?
+  storeState       String?
+  storeZipCode     String?
+  latitude         Float?
+  longitude        Float?
+  vendorPhoneNumber String?
+  vendorVerified   Boolean      @default(false)
+  vendorJoinedAt   DateTime?
+  commissionRate   Float        @default(10)
+  weeklyOpeningHours String?
+  temporarilyClosed Boolean     @default(false)
+  notificationPreferencesJson String?
+  
+  // Relations
+  orders           Order[]
+  ratings          Rating[]
+  reviews          Review[]
+  wishlistItems    WishlistItem[]
+  promoCodes       PromoCode[]
+  referralsCreated Referral[]   @relation("referrer")
+  referralsReceived Referral[]  @relation("referred")
+  supportTickets   SupportTicket[]
+  products         Product[]
+  payouts          VendorPayout[]
+  deliveryZones    DeliveryZone[] @relation("vendorDeliveryZones")
+  orderItems       OrderItem[]
+  notifications    Notification[]
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model Product {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  salePrice   Float?
+  onSale      Boolean    @default(false)
+  image       String?
+  category    String?
+  stock       Int        @default(0)
+  salesCount  Int        @default(0)
+  rating      Float      @default(0)
+  averageRating Float    @default(0)
+  reviewCount Int        @default(0)
+  optionGroupsJson String?
+  specificationsJson String?
+  
+  // Vendor relationship (optional for backward compatibility)
+  vendorId    String?
+  vendor      User?      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  
+  orderItems  OrderItem[]
+  ratings     Rating[]
+  reviews     Review[]
+  wishlistItems WishlistItem[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  @@index([vendorId])
+}
+
+
+model Order {
+  id        String      @id @default(cuid())
+  orderNumber String?   @unique
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     OrderItem[]
+  total     Float
+  status    String      @default("pending")
+  payNowRef String?     @unique
+  
+  // Delivery tracking
+  deliveryAddress String?
+  deliveryFee Float     @default(0)
+  
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  vendorId  String?
+  vendor    User?   @relation(fields: [vendorId], references: [id])
+  payoutId  String?
+  payout    VendorPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  quantity  Int
+  price     Float
+  selectedOptionsJson String?
+  selectedOptionsSummary String?
+  status    String  @default("pending")
+  preparationMinutes Int @default(0)
+  additionalDelayMinutes Int @default(0)
+  estimatedDeliveryMinutes Int?
+  deliveryFee Float @default(0)
+  vendorEarnings Float @default(0)
+  proofPhotoDataUrl String?
+  proofSignatureName String?
+  proofChecklistJson String?
+  proofSubmittedAt DateTime?
+  proofAuditNote String?
+  updatedAt DateTime @updatedAt
+  
+  @@index([orderId])
+  @@index([status])
+  @@index([vendorId])
+  @@index([payoutId])
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      @default(5)
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      // 1-5 stars
+  title     String
+  comment   String
+  helpful   Int      @default(0)
+  notHelpful Int     @default(0)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  addedAt   DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+model PromoCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  discount    Float
+  description String?
+  expiryDate  DateTime
+  maxUses     Int      @default(1)
+  currentUses Int      @default(0)
+  minPurchase Float    @default(0)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Referral {
+  id            String   @id @default(cuid())
+  referrerId    String
+  referrer      User     @relation("referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId    String
+  referred      User     @relation("referred", fields: [referredId], references: [id], onDelete: Cascade)
+  rewardAmount  Float    @default(25)
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   String
+  message   String
+  status    String   @default("open")
+  priority  String   @default("normal")
+  response  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DeliveryZone {
+  id        String  @id @default(cuid())
+  vendorId  String
+  vendor    User    @relation("vendorDeliveryZones", fields: [vendorId], references: [id], onDelete: Cascade)
+  zipCode   String
+  city      String?
+  state     String?
+  address   String?
+  baseFee   Float
+  perKmFee  Float   @default(0)
+  maxDistance Float @default(50)
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([vendorId, zipCode])
+  @@index([vendorId])
+}
+
+model VendorPayout {
+  id        String  @id @default(cuid())
+  vendorId  String
+  vendor    User    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  items     OrderItem[]
+  amount    Float
+  status    String  @default("requested")
+  ordersIncluded Int @default(0)
+  paymentMethod String?
+  transactionId String?
+  reviewedAt DateTime?
+  reviewedById String?
+  reviewNotes String?
+  processedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([vendorId])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  recipientId String?
+  recipient   User?    @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  audience    String   @default("user")
+  channel     String   @default("in_app")
+  title       String
+  message     String
+  orderId     String?
+  orderItemId String?
+  statusFrom  String?
+  statusTo    String?
+  deliveryStatus String?
+  metadata    String?
+  externalMessageId String?
+  read        Boolean  @default(false)
+  sentAt      DateTime?
+  failedAt    DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId])
+  @@index([audience])
+  @@index([channel])
+  @@index([deliveryStatus])
+  @@index([orderItemId, audience])
+  @@index([createdAt])
+}
+
+model SiteSettings {
+  id                   String   @id
+  companyName          String   @default("DynaLink Connect")
+  heroBadge            String   @default("Company Marketplace")
+  heroTitle            String   @default("Welcome to DynaLink Connect")
+  heroSubtitle         String   @default("Fast, reliable delivery from your favorite vendors. Shop everything you need in one place.")
+  heroBackgroundImage  String?
+  heroForegroundImage  String?
+  primaryCtaLabel      String   @default("Shop Now")
+  primaryCtaHref       String   @default("/products")
+  secondaryCtaLabel    String   @default("Become a Vendor")
+  secondaryCtaHref     String   @default("/vendor/register")
+  whatsappNumber       String   @default("1234567890")
+  referralEnabled      Boolean  @default(true)
+  referralRewardAmount Float    @default(25)
+  referralHeadline     String   @default("Referral program is active")
+  updatedAt            DateTime @updatedAt
+  createdAt            DateTime @default(now())
+}

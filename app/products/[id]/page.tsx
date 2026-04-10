@@ -1,10 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useCartStore } from '@/lib/store'
-import { Star, ShoppingCart, Truck, Shield } from 'lucide-react'
+import { Star, ShoppingCart, Truck, Shield, Store } from 'lucide-react'
 import Link from 'next/link'
+import { getProductAttributeSummary, isFoodProduct } from '@/lib/product-attributes'
+import { toVendorSlug } from '@/lib/vendor-slug'
+import { ProductOptionSelector } from '@/components/product-option-selector'
+import {
+  buildCartItemId,
+  getResolvedProductOptionGroups,
+  getResolvedProductSpecifications,
+  type ProductOptionGroup,
+  type ProductSpecification,
+  type SelectedProductOption,
+  validateAndResolveSelectedOptions,
+} from '@/lib/product-options'
 
 interface Product {
   id: string
@@ -19,6 +31,15 @@ interface Product {
   salesCount: number
   rating: number
   vendorId?: string
+  vendorName?: string | null
+  vendorCategory?: string | null
+  vendorAddress?: string | null
+  optionGroupsJson?: string | null
+  specificationsJson?: string | null
+  resolvedOptionGroups?: ProductOptionGroup[]
+  resolvedSpecifications?: ProductSpecification[]
+  hasConfigurableOptions?: boolean
+  hasSpecifications?: boolean
 }
 
 export default function ProductDetailsPage() {
@@ -29,7 +50,50 @@ export default function ProductDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [addedToCart, setAddedToCart] = useState(false)
+  const [selectedOptions, setSelectedOptions] = useState<SelectedProductOption[]>([])
+  const [selectedOptionsMap, setSelectedOptionsMap] = useState<Record<string, string>>({})
+  const [selectedOptionsSummary, setSelectedOptionsSummary] = useState('')
+  const [selectionError, setSelectionError] = useState<string | null>(null)
   const addItem = useCartStore(state => state.addItem)
+  const optionGroups = useMemo(
+    () =>
+      product?.resolvedOptionGroups ||
+      getResolvedProductOptionGroups({
+        optionGroupsJson: product?.optionGroupsJson,
+        category: product?.category,
+        vendorCategory: product?.vendorCategory,
+        vendorName: product?.vendorName,
+      }),
+    [product?.resolvedOptionGroups, product?.optionGroupsJson, product?.category, product?.vendorCategory, product?.vendorName]
+  )
+  const specifications = useMemo(
+    () =>
+      product?.resolvedSpecifications ||
+      getResolvedProductSpecifications({
+        specificationsJson: product?.specificationsJson,
+        category: product?.category,
+        vendorCategory: product?.vendorCategory,
+        vendorName: product?.vendorName,
+      }),
+    [
+      product?.resolvedSpecifications,
+      product?.specificationsJson,
+      product?.category,
+      product?.vendorCategory,
+      product?.vendorName,
+    ]
+  )
+  const handleOptionsChange = useCallback((selection: {
+    selectedOptions: SelectedProductOption[]
+    totalPrice: number
+    selectedSummary: string
+    selectedMap: Record<string, string>
+  }) => {
+    setSelectedOptions(selection.selectedOptions)
+    setSelectedOptionsMap(selection.selectedMap)
+    setSelectedOptionsSummary(selection.selectedSummary)
+    setSelectionError(null)
+  }, [])
 
   useEffect(() => {
     if (!productId) return
@@ -53,16 +117,45 @@ export default function ProductDetailsPage() {
     fetchProduct()
   }, [productId])
 
+  useEffect(() => {
+    setSelectedOptions([])
+    setSelectedOptionsMap({})
+    setSelectedOptionsSummary('')
+    setSelectionError(null)
+    setQuantity(1)
+  }, [product?.id])
+
   const handleAddToCart = () => {
     if (!product) return
-    
+
+    const resolved = validateAndResolveSelectedOptions(optionGroups, selectedOptionsMap)
+    if (!resolved.ok) {
+      setSelectionError(resolved.error)
+      return
+    }
+
+    const unitPrice = (product.onSale && product.salePrice ? product.salePrice : product.price) + resolved.optionsTotal
+    const cartItemId = buildCartItemId(product.id, resolved.selectedOptions)
+
     for (let i = 0; i < quantity; i++) {
-      addItem({
-        id: product.id,
+      const result = addItem({
+        id: cartItemId,
+        productId: product.id,
         name: product.name,
-        price: product.onSale && product.salePrice ? product.salePrice : product.price,
+        price: unitPrice,
+        basePrice: product.onSale && product.salePrice ? product.salePrice : product.price,
         image: product.image,
+        vendorId: product.vendorId,
+        vendorName: product.vendorName,
+        vendorAddress: product.vendorAddress,
+        selectedOptions: resolved.selectedOptions,
+        selectedOptionsSummary: resolved.selectedSummary,
       })
+
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
     }
     
     setAddedToCart(true)
@@ -99,6 +192,20 @@ export default function ProductDetailsPage() {
   const discountPercentage = product.onSale && product.salePrice 
     ? Math.round(((originalPrice - product.salePrice) / originalPrice) * 100)
     : 0
+  const attributeSummary = getProductAttributeSummary({
+    name: product.name,
+    category: product.category,
+    vendorName: product.vendorName,
+    stock: product.stock,
+  })
+  const foodProduct = isFoodProduct({
+    name: product.name,
+    category: product.category,
+    vendorName: product.vendorName,
+  })
+  const vendorHref = product.vendorName ? `/vendor/${toVendorSlug(product.vendorName)}?product=${product.id}` : null
+  const optionsTotal = selectedOptions.reduce((sum, option) => sum + option.priceModifier, 0)
+  const finalDisplayPrice = displayPrice + optionsTotal
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -146,6 +253,15 @@ export default function ProductDetailsPage() {
 
               {/* Name and Rating */}
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{product.name}</h1>
+              {vendorHref && (
+                <Link
+                  href={vendorHref}
+                  className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  <Store className="h-4 w-4" />
+                  Sold by {product.vendorName}
+                </Link>
+              )}
               
               <div className="flex items-center gap-4 mb-6">
                 <div className="flex items-center">
@@ -162,11 +278,36 @@ export default function ProductDetailsPage() {
                 <span className="text-gray-600">({product.salesCount} sold)</span>
               </div>
 
+              <div className="mb-6 flex flex-wrap gap-2">
+                {attributeSummary.badges.map((badge) => (
+                  <span
+                    key={badge}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+
+              {optionGroups.length ? (
+                <div className="mb-8">
+                  <ProductOptionSelector
+                    key={product.id}
+                    groups={optionGroups}
+                    basePrice={displayPrice}
+                    onChange={handleOptionsChange}
+                  />
+                  {selectionError ? (
+                    <p className="mt-3 text-sm font-medium text-red-600">{selectionError}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
               {/* Price Section */}
               <div className="mb-8 pb-8 border-b border-gray-200">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="flex items-baseline gap-3">
-                    <span className="text-4xl font-bold text-gray-900">${displayPrice.toFixed(2)}</span>
+                    <span className="text-4xl font-bold text-gray-900">${finalDisplayPrice.toFixed(2)}</span>
                     {product.onSale && product.salePrice && (
                       <span className="text-2xl text-gray-400 line-through">${originalPrice.toFixed(2)}</span>
                     )}
@@ -177,6 +318,9 @@ export default function ProductDetailsPage() {
                     </span>
                   )}
                 </div>
+                {selectedOptionsSummary ? (
+                  <p className="text-sm text-slate-600">Selected: {selectedOptionsSummary}</p>
+                ) : null}
               </div>
 
               {/* Description */}
@@ -185,17 +329,33 @@ export default function ProductDetailsPage() {
                 <p className="text-gray-700 leading-relaxed">{product.description}</p>
               </div>
 
+              {specifications.length ? (
+                <div className="mb-8">
+                  <h3 className="mb-3 text-lg font-semibold text-gray-900">Specifications</h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {specifications.map((specification) => (
+                      <div key={specification.id} className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          {specification.label}
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-gray-900">{specification.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               {/* Stock Status */}
               <div className="mb-8 p-4 bg-gray-50 rounded-lg">
                 {product.stock > 0 ? (
                   <div className="flex items-center gap-2 text-green-600 font-medium mb-2">
                     <div className="w-2 h-2 bg-green-600 rounded-full"></div>
-                    In Stock ({product.stock} available)
+                    {attributeSummary.availabilityLabel}
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-red-600 font-medium">
                     <div className="w-2 h-2 bg-red-600 rounded-full"></div>
-                    Out of Stock
+                    {foodProduct ? 'Unavailable' : attributeSummary.availabilityLabel}
                   </div>
                 )}
               </div>

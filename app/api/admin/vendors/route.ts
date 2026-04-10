@@ -1,22 +1,72 @@
+import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { createRequestDebugId, getSessionDebug, logRequestDebug, logRequestError } from '@/lib/request-debug'
+import { roundCurrency } from '@/lib/vendor-ledger'
 
-export async function GET(request: NextRequest) {
+interface SessionUserWithRole {
+  role?: string
+}
+
+function isAdminRole(session: Awaited<ReturnType<typeof auth>>) {
+  return session?.user && (session.user as SessionUserWithRole).role === 'admin'
+}
+
+function normalizeOptionalString(value: unknown) {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function normalizePriority(value: unknown) {
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+
+  const parsed = Number.parseInt(String(value), 10)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null
+  }
+
+  return parsed
+}
+
+const DEDUCTED_PAYOUT_STATUSES = ['approved', 'processing', 'completed'] as const
+
+export async function GET() {
+  const requestId = createRequestDebugId('admin-vendors-get')
   try {
     const session = await auth()
-    if (!session?.user || (session.user as any).role !== 'admin') {
+    logRequestDebug('admin vendors GET start', requestId, {
+      ...getSessionDebug(session),
+    })
+
+    if (!isAdminRole(session)) {
+      logRequestDebug('admin vendors GET unauthorized', requestId, {
+        ...getSessionDebug(session),
+      })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get all vendors (users with isVendor = true)
     const vendors = await prisma.user.findMany({
       where: { isVendor: true },
       select: {
         id: true,
         email: true,
+        isActive: true,
         vendorName: true,
         vendorDescription: true,
+        vendorImage: true,
+        storeBannerImage: true,
+        vendorCategory: true,
+        vendorPriority: true,
+        temporarilyClosed: true,
+        accountBalance: true,
         storeAddress: true,
         storeCity: true,
         storeState: true,
@@ -24,71 +74,285 @@ export async function GET(request: NextRequest) {
         vendorPhoneNumber: true,
         vendorVerified: true,
         vendorJoinedAt: true,
+        products: {
+          select: {
+            id: true,
+            stock: true,
+            averageRating: true,
+            rating: true,
+            reviewCount: true,
+          },
+        },
+        orderItems: {
+          select: {
+            status: true,
+            vendorEarnings: true,
+          },
+        },
+        payouts: {
+          select: {
+            amount: true,
+            status: true,
+          },
+        },
         _count: {
-          select: { products: true, orders: true }
-        }
+          select: { products: true, orderItems: true },
+        },
       },
-      orderBy: { vendorJoinedAt: 'desc' }
+      orderBy: [{ vendorPriority: 'desc' }, { vendorJoinedAt: 'desc' }],
     })
 
-    return NextResponse.json(vendors)
+    const vendorsWithMetrics = vendors.map((vendor) => {
+      const ratedProducts = vendor.products.filter(
+        (product) =>
+          (typeof product.averageRating === 'number' && product.averageRating > 0) ||
+          (typeof product.rating === 'number' && product.rating > 0)
+      )
+      const averageRating =
+        ratedProducts.length > 0
+          ? ratedProducts.reduce(
+              (sum, product) => sum + (product.averageRating || product.rating || 0),
+              0
+            ) / ratedProducts.length
+          : 0
+      const activeProductCount = vendor.products.filter((product) => product.stock > 0).length
+      const completedSalesTotal = roundCurrency(
+        vendor.orderItems
+          .filter((item) => item.status === 'completed')
+          .reduce((sum, item) => sum + item.vendorEarnings, 0)
+      )
+      const deductedPayouts = roundCurrency(
+        vendor.payouts
+          .filter((payout) =>
+            DEDUCTED_PAYOUT_STATUSES.includes(
+              payout.status as (typeof DEDUCTED_PAYOUT_STATUSES)[number]
+            )
+          )
+          .reduce((sum, payout) => sum + payout.amount, 0)
+      )
+      const syncedBalance = roundCurrency(Math.max(0, completedSalesTotal - deductedPayouts))
+
+      return {
+        ...vendor,
+        accountBalance: syncedBalance,
+        averageRating,
+        activeProductCount,
+      }
+    })
+
+    logRequestDebug('admin vendors GET success', requestId, {
+      vendorCount: vendorsWithMetrics.length,
+    })
+
+    return NextResponse.json(vendorsWithMetrics)
   } catch (error) {
-    console.error('Error fetching vendors:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch vendors' },
-      { status: 500 }
-    )
+    logRequestError('admin vendors GET failed', requestId, error, {})
+    return NextResponse.json({ error: 'Failed to fetch vendors' }, { status: 500 })
   }
 }
 
-export async function PATCH(request: NextRequest) {
+export async function POST(request: NextRequest) {
+  const requestId = createRequestDebugId('admin-vendors-post')
   try {
     const session = await auth()
-    if (!session?.user || (session.user as any).role !== 'admin') {
+    logRequestDebug('admin vendors POST start', requestId, {
+      ...getSessionDebug(session),
+    })
+
+    if (!isAdminRole(session)) {
+      logRequestDebug('admin vendors POST unauthorized', requestId, {
+        ...getSessionDebug(session),
+      })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
-    const { vendorId, verified, reason } = body
+    const email = normalizeOptionalString(body.email)
+    const vendorName = normalizeOptionalString(body.vendorName)
+    const vendorDescription = normalizeOptionalString(body.vendorDescription)
+    const vendorPhoneNumber = normalizeOptionalString(body.vendorPhoneNumber)
+    const vendorImage = normalizeOptionalString(body.vendorImage)
+    const storeBannerImage = normalizeOptionalString(body.storeBannerImage)
+    const vendorCategory = normalizeOptionalString(body.vendorCategory)
+    const storeAddress = normalizeOptionalString(body.storeAddress)
+    const storeCity = normalizeOptionalString(body.storeCity)
+    const storeState = normalizeOptionalString(body.storeState)
+    const storeZipCode = normalizeOptionalString(body.storeZipCode)
+    const vendorPriority = normalizePriority(body.vendorPriority)
+    const vendorVerified = Boolean(body.vendorVerified ?? true)
 
-    if (!vendorId || verified === undefined) {
-      return NextResponse.json({ error: 'Missing vendorId or verified status' }, { status: 400 })
+    logRequestDebug('admin vendors POST payload', requestId, {
+      email,
+      vendorName,
+      vendorCategory,
+      vendorPriority,
+      vendorVerified,
+    })
+
+    if (!email || !vendorName) {
+      return NextResponse.json({ error: 'Email and vendor name are required' }, { status: 400 })
     }
 
-    // Check vendor exists
+    if (vendorPriority === null) {
+      return NextResponse.json({ error: 'Vendor priority must be 0 or higher' }, { status: 400 })
+    }
+
+    const [emailTaken, vendorNameTaken] = await Promise.all([
+      prisma.user.findUnique({ where: { email }, select: { id: true } }),
+      prisma.user.findUnique({ where: { vendorName }, select: { id: true } }).catch(() => null),
+    ])
+
+    if (emailTaken) {
+      return NextResponse.json({ error: 'Email is already in use' }, { status: 400 })
+    }
+
+    if (vendorNameTaken) {
+      return NextResponse.json({ error: 'Vendor name is already in use' }, { status: 400 })
+    }
+
+    const temporaryPassword = randomBytes(6).toString('base64url')
+    const hashedPassword = await bcrypt.hash(temporaryPassword, 10)
+
+    const vendor = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        role: 'vendor',
+        isVendor: true,
+        isActive: true,
+        vendorName,
+        vendorDescription,
+        vendorPhoneNumber,
+        vendorImage,
+        storeBannerImage,
+        vendorCategory,
+        storeAddress,
+        storeCity,
+        storeState,
+        storeZipCode,
+        vendorPriority: vendorPriority ?? 0,
+        vendorVerified,
+        vendorJoinedAt: new Date(),
+      },
+      select: {
+        id: true,
+        email: true,
+        vendorName: true,
+        vendorVerified: true,
+        vendorPriority: true,
+        storeBannerImage: true,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'Vendor created successfully',
+      vendor,
+      temporaryPassword,
+    })
+  } catch (error) {
+    logRequestError('admin vendors POST failed', requestId, error, {})
+    return NextResponse.json({ error: 'Failed to create vendor' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const requestId = createRequestDebugId('admin-vendors-patch')
+  try {
+    const session = await auth()
+    logRequestDebug('admin vendors PATCH start', requestId, {
+      ...getSessionDebug(session),
+    })
+
+    if (!isAdminRole(session)) {
+      logRequestDebug('admin vendors PATCH unauthorized', requestId, {
+        ...getSessionDebug(session),
+      })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const vendorId = normalizeOptionalString(body.vendorId)
+
+    logRequestDebug('admin vendors PATCH payload', requestId, {
+      vendorId,
+      vendorPriority: body.vendorPriority,
+      verified: body.verified,
+    })
+
+    if (!vendorId) {
+      return NextResponse.json({ error: 'Missing vendorId' }, { status: 400 })
+    }
+
     const vendor = await prisma.user.findUnique({
       where: { id: vendorId },
-      select: { isVendor: true, email: true }
+      select: { id: true, isVendor: true },
     })
 
     if (!vendor?.isVendor) {
       return NextResponse.json({ error: 'Vendor not found' }, { status: 404 })
     }
 
-    // Update vendor verification status
+    const vendorPriority = normalizePriority(body.vendorPriority)
+    if (vendorPriority === null) {
+      return NextResponse.json({ error: 'Vendor priority must be 0 or higher' }, { status: 400 })
+    }
+
+    const updateData: {
+      vendorVerified?: boolean
+      vendorPriority?: number
+      storeBannerImage?: string | null
+      vendorImage?: string | null
+      vendorCategory?: string | null
+      vendorDescription?: string | null
+    } = {}
+
+    if (typeof body.verified === 'boolean') {
+      updateData.vendorVerified = body.verified
+    }
+    if (vendorPriority !== undefined) {
+      updateData.vendorPriority = vendorPriority
+    }
+    if (body.storeBannerImage !== undefined) {
+      updateData.storeBannerImage = normalizeOptionalString(body.storeBannerImage) ?? null
+    }
+    if (body.vendorImage !== undefined) {
+      updateData.vendorImage = normalizeOptionalString(body.vendorImage) ?? null
+    }
+    if (body.vendorCategory !== undefined) {
+      updateData.vendorCategory = normalizeOptionalString(body.vendorCategory) ?? null
+    }
+    if (body.vendorDescription !== undefined) {
+      updateData.vendorDescription = normalizeOptionalString(body.vendorDescription) ?? null
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No vendor changes supplied' }, { status: 400 })
+    }
+
     const updated = await prisma.user.update({
       where: { id: vendorId },
-      data: { vendorVerified: verified },
+      data: updateData,
       select: {
         id: true,
         vendorName: true,
         email: true,
-        vendorVerified: true
-      }
+        vendorVerified: true,
+        vendorPriority: true,
+        storeBannerImage: true,
+        vendorImage: true,
+        vendorCategory: true,
+        vendorDescription: true,
+      },
     })
-
-    // TODO: Send email notification to vendor about approval/rejection
 
     return NextResponse.json({
       success: true,
-      message: `Vendor ${verified ? 'approved' : 'rejected'}`,
-      vendor: updated
+      message: 'Vendor updated successfully',
+      vendor: updated,
     })
   } catch (error) {
-    console.error('Error updating vendor verification:', error)
-    return NextResponse.json(
-      { error: 'Failed to update vendor' },
-      { status: 500 }
-    )
+    logRequestError('admin vendors PATCH failed', requestId, error, {})
+    return NextResponse.json({ error: 'Failed to update vendor' }, { status: 500 })
   }
 }

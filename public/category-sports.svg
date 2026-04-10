@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">
+  <rect width="600" height="400" fill="#111827"/>
+  <circle cx="220" cy="190" r="95" fill="#22c55e"/>
+  <path d="M160 135c50 30 90 80 120 130" stroke="#052e16" stroke-width="14" fill="none"/>
+  <path d="M280 115c-28 52-40 112-34 170" stroke="#052e16" stroke-width="14" fill="none"/>
+  <circle cx="390" cy="180" r="55" fill="#f97316"/>
+  <path d="M350 170c28-24 58-24 84 0" stroke="#7c2d12" stroke-width="10" fill="none"/>
+  <text x="300" y="360" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#ffffff">Sports</text>
+</svg>

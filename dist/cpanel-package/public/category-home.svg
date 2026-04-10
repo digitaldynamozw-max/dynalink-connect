@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">
+  <rect width="600" height="400" fill="#0f172a"/>
+  <polygon points="120,190 300,70 480,190" fill="#f97316"/>
+  <rect x="170" y="180" width="260" height="140" rx="10" fill="#fdba74"/>
+  <rect x="205" y="220" width="60" height="100" fill="#7c2d12"/>
+  <rect x="315" y="215" width="75" height="55" fill="#dbeafe"/>
+  <text x="300" y="360" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#ffffff">Home</text>
+</svg>

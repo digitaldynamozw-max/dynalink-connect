@@ -3,15 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "prisma generate",
     "dev": "next dev -p 3001",
-    "build": "next build",
-    "start": "next start",
+    "build": "prisma generate && next build",
+    "build:cpanel": "prisma generate --schema prisma/schema.mysql.prisma && next build --webpack --experimental-build-mode compile",
+    "start": "node server.js",
+    "start:next": "next start",
     "lint": "eslint",
     "db:migrate": "npx prisma migrate dev",
     "db:generate": "npx prisma generate",
     "db:push": "npx prisma db push",
+    "db:generate:mysql": "npx prisma generate --schema prisma/schema.mysql.prisma",
+    "db:push:mysql": "npx prisma db push --schema prisma/schema.mysql.prisma",
     "db:seed": "npx ts-node prisma/seed.ts",
-    "vercel-build": "npx prisma generate && next build"
+    "reconcile:vendor-balances": "tsx scripts/reconcile-vendor-balances.ts",
+    "reconcile:vendor-balances:apply": "tsx scripts/reconcile-vendor-balances.ts --apply",
+    "repair:pickup-addresses": "tsx scripts/repair-pickup-order-addresses.ts",
+    "repair:pickup-addresses:apply": "tsx scripts/repair-pickup-order-addresses.ts --apply",
+    "verify:delivery": "tsx scripts/verify-delivery-operations.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -22,6 +32,7 @@
     "lucide-react": "^0.577.0",
     "next": "16.1.7",
     "next-auth": "^4.24.13",
+    "nodemailer": "^7.0.13",
     "prisma": "^5.22.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -30,6 +41,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

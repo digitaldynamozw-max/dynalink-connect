@@ -1,28 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { auth } from '@/lib/auth'
+import { serializeProductPayload } from '@/lib/product-payload'
 
 export async function GET() {
   try {
     const products = await prisma.product.findMany({
+      include: {
+        vendor: {
+          select: {
+            vendorName: true,
+            name: true,
+            storeAddress: true,
+            storeCity: true,
+            storeState: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' }
     })
-    return NextResponse.json(products)
+    return NextResponse.json(products.map((product) => serializeProductPayload(product)))
   } catch (error) {
+    console.error('GET /api/products failed', error)
     return NextResponse.json({ error: 'Failed to fetch products' }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const { auth } = await import('@/lib/auth')
     const session = await auth()
-    const role = (session?.user as any)?.role as string | undefined
+    const role = session?.user?.role
     if (role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
-    const { name, description, price, salePrice, onSale, image, category, stock } = body
+    const {
+      name,
+      description,
+      price,
+      salePrice,
+      onSale,
+      image,
+      category,
+      stock,
+      optionGroupsJson,
+      specificationsJson,
+    } = body
 
     const product = await prisma.product.create({
       data: {
@@ -33,12 +57,15 @@ export async function POST(request: NextRequest) {
         onSale: onSale || false,
         image,
         category,
-        stock: parseInt(stock)
+        stock: parseInt(stock),
+        optionGroupsJson: optionGroupsJson || null,
+        specificationsJson: specificationsJson || null,
       }
     })
 
-    return NextResponse.json(product, { status: 201 })
+    return NextResponse.json(serializeProductPayload(product), { status: 201 })
   } catch (error) {
+    console.error('POST /api/products failed', error)
     return NextResponse.json({ error: 'Failed to create product' }, { status: 500 })
   }
 }
