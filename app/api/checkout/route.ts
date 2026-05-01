@@ -18,7 +18,6 @@ import { validateVendorOrderLimit } from '@/lib/vendor-order-limits'
 import { createRequestDebugId, getSessionDebug, logRequestDebug, logRequestError } from '@/lib/request-debug'
 import { hasPaynowConfig, initiatePaynowExpressTransaction, initiatePaynowTransaction, type PaynowExpressMethod } from '@/lib/paynow'
 import { buildPayNowReturnUrl } from '@/lib/payment-links'
-import { sendPushToCouriers } from '@/lib/push-notifications'
 
 interface CheckoutItem {
   productId: string
@@ -749,23 +748,6 @@ export async function POST(request: NextRequest) {
     })
 
     await sendOrderReceipt(order.id)
-
-    if (selectedFulfillmentMethod === 'delivery') {
-      await sendPushToCouriers({
-        title: 'New delivery order',
-        body: `Order ${orderLabel} is waiting for a nearby driver.`,
-        url: '/mobile?role=driver&view=orders',
-        tag: `driver-order-${order.id}`,
-        sound: 'default',
-        priority: 'high',
-        channelId: 'orders',
-        data: {
-          event: 'new_delivery_order',
-          orderId: order.id,
-          orderNumber: orderLabel,
-        },
-      })
-    }
 
     logRequestDebug('checkout:created', requestId, {
       orderId: order.id,
