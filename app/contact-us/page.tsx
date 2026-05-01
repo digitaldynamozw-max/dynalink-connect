@@ -27,18 +27,18 @@ export default function ContactUsPage() {
             <p className="mt-2 text-sm text-gray-700">
               Best for urgent delivery or checkout questions.
             </p>
-            <p className="mt-3 font-semibold text-emerald-700">+263719968771</p>
-            <p className="mt-1 text-xs text-gray-600">Available Monday to Friday, 9:00 AM to 6:00 PM</p>
+            <p className="mt-3 font-semibold text-emerald-700">+263788006331</p>
+            <p className="mt-1 text-xs text-gray-600">Available Monday to Friday, 8:00 AM to 17:00 PM</p>
           </div>
 
           <div className="rounded-2xl bg-purple-50 p-5 ring-1 ring-purple-100">
             <MessageSquare className="h-6 w-6 text-purple-700" />
-            <h3 className="mt-3 font-semibold text-gray-900">Live chat</h3>
+            <h3 className="mt-3 font-semibold text-gray-900">Support desk</h3>
             <p className="mt-2 text-sm text-gray-700">
-              Great for quick pre-order questions and marketplace guidance.
+              Use email or phone support and include your order number for faster handling.
             </p>
             <p className="mt-3 text-sm font-semibold text-purple-700">
-              Chat window available during support hours
+              Human support during working hours
             </p>
           </div>
 

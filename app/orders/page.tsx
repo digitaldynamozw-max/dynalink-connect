@@ -9,7 +9,6 @@ import {
   Eye,
   MapPin,
   Package2,
-  Phone,
   Star,
   Store,
   UserRound,
@@ -37,7 +36,6 @@ interface OrderItem {
   vendor?: {
     id: string
     vendorName?: string | null
-    vendorPhoneNumber?: string | null
     storeAddress?: string | null
     storeCity?: string | null
     storeState?: string | null
@@ -53,9 +51,12 @@ interface Order {
   orderNumber?: string
   receiptNumber: string
   status: string
+  pendingManualPayment?: boolean
   total: number
   deliveryFee: number
   platformFee?: number
+  promoCode?: string | null
+  promoDiscount?: number
   fulfillmentMethod?: 'delivery' | 'pickup'
   deliveryAddress?: string | null
   requestedDeliveryAt?: string | null
@@ -86,6 +87,11 @@ interface ReviewDraft {
   comment: string
 }
 
+interface SiteSettingsSummary {
+  companyName?: string
+  customerOrderCancellationWindowMinutes?: number
+}
+
 function defaultReviewDraft(): ReviewDraft {
   return { rating: 5, title: '', comment: '' }
 }
@@ -98,9 +104,18 @@ function formatStatus(status: string) {
     .join(' ')
 }
 
+function getPaymentNote(order: Order) {
+  if (order.pendingManualPayment) {
+    return 'Awaiting manual USD payment confirmation'
+  }
+
+  return null
+}
+
 function badgeClass(status: string) {
   if (status === 'completed') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
   if (status === 'courier_on_the_way') return 'border-sky-200 bg-sky-50 text-sky-700'
+  if (status === 'courier_assigned' || status === 'arrived_at_vendor') return 'border-blue-200 bg-blue-50 text-blue-700'
   if (status === 'accepted' || status === 'paid' || status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
   if (status === 'declined' || status === 'cancelled') return 'border-rose-200 bg-rose-50 text-rose-700'
   return 'border-slate-200 bg-slate-100 text-slate-700'
@@ -167,7 +182,28 @@ function getItemSummary(order: Order) {
   return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`
 }
 
-function buildOrderPrintMarkup(order: Order) {
+function getCancellationDeadline(order: Order, cancellationWindowMinutes: number) {
+  return new Date(new Date(order.createdAt).getTime() + cancellationWindowMinutes * 60 * 1000)
+}
+
+function getCancellationTimeLeftMs(order: Order, cancellationWindowMinutes: number, now: number) {
+  return getCancellationDeadline(order, cancellationWindowMinutes).getTime() - now
+}
+
+function canCustomerCancelOrder(order: Order, cancellationWindowMinutes: number, now: number) {
+  if (cancellationWindowMinutes <= 0) return false
+  if (!['pending', 'accepted', 'paid'].includes(order.status)) return false
+  return getCancellationTimeLeftMs(order, cancellationWindowMinutes, now) > 0
+}
+
+function formatCountdown(ms: number) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function buildOrderPrintMarkup(order: Order, companyName: string) {
   const vendor = getVendorSummary(order)
   const subtotal = order.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const isPickup = order.fulfillmentMethod === 'pickup'
@@ -193,41 +229,71 @@ function buildOrderPrintMarkup(order: Order) {
         <meta charset="utf-8" />
         <title>Order ${order.receiptNumber}</title>
         <style>
-          body { font-family: Arial, sans-serif; color: #0f172a; margin: 32px; }
-          .shell { max-width: 760px; margin: 0 auto; }
+          body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; background: #eef4ff; }
+          .page { padding: 28px; }
+          .shell { max-width: 820px; margin: 0 auto; position: relative; background: #ffffff; border: 1px solid #dbe5f4; border-radius: 28px; overflow: hidden; box-shadow: 0 28px 80px -42px rgba(15,23,42,0.35); }
+          .watermark { position: absolute; right: -28px; top: 180px; width: 240px; opacity: 0.06; }
+          .hero { background: linear-gradient(135deg, #0f172a, #1d4ed8 58%, #60a5fa); color: #ffffff; padding: 28px; }
           .top { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
-          .title { font-size: 28px; font-weight: 700; margin: 0; }
+          .brand { display: flex; gap: 14px; align-items: center; }
+          .logo-box { border-radius: 18px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.12); padding: 10px; }
+          .logo { width: 56px; height: 56px; object-fit: contain; display: block; }
+          .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #bfdbfe; }
+          .title { font-size: 30px; font-weight: 700; margin: 8px 0 0; }
           .muted { color: #64748b; font-size: 12px; }
-          .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; font-size: 12px; background: #eff6ff; color: #1d4ed8; }
+          .hero-muted { color: #dbeafe; font-size: 12px; }
+          .pill { display: inline-block; padding: 8px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.12); color: #ffffff; }
+          .content { padding: 28px; position: relative; }
+          .intro { border: 1px solid #e2e8f0; border-radius: 20px; background: linear-gradient(180deg,#ffffff,#f8fbff); padding: 18px 20px; }
           .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 24px; }
-          .card { border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px; }
-          h2 { font-size: 14px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; }
+          .card { border: 1px solid #e2e8f0; border-radius: 18px; padding: 16px; background: #f8fafc; }
+          h2 { font-size: 12px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; }
           p { margin: 4px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 22px; }
           th, td { border-bottom: 1px solid #e2e8f0; padding: 12px 0; text-align: left; vertical-align: top; }
           th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; }
           .amount { text-align: right; white-space: nowrap; }
-          .totals { margin-top: 18px; margin-left: auto; width: 260px; }
+          .summary-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; margin-top: 22px; }
+          .note-card { border: 1px solid #e2e8f0; border-radius: 20px; background: #f8fafc; padding: 18px; }
+          .totals { border: 1px solid #dbe5f4; border-radius: 20px; padding: 18px; background: linear-gradient(180deg,#ffffff,#f8fbff); }
           .totals-row { display: flex; justify-content: space-between; padding: 6px 0; }
           .totals-row.total { font-size: 18px; font-weight: 700; border-top: 1px solid #cbd5e1; margin-top: 6px; padding-top: 12px; }
+          .footer { margin-top: 18px; color: #64748b; font-size: 12px; text-align: center; }
         </style>
       </head>
       <body>
+        <div class="page">
         <div class="shell">
+          <img class="watermark" src="/logo.png" alt="${companyName} watermark" />
+          <div class="hero">
           <div class="top">
-            <div>
-              <p class="title">Order #${order.receiptNumber}</p>
-              <p class="muted">Placed ${formatDateTime(order.createdAt)}</p>
+            <div class="brand">
+              <div class="logo-box">
+                <img class="logo" src="/logo.png" alt="${companyName} logo" />
+              </div>
+              <div>
+                <div class="eyebrow">${companyName}</div>
+                <p class="title">Order Receipt</p>
+                <p class="hero-muted">Receipt #${order.receiptNumber}</p>
+              </div>
             </div>
-            <span class="pill">${formatStatus(order.status)}</span>
+            <div style="text-align:right;">
+              <span class="pill">${isPickup ? 'Pickup' : 'Delivery'}</span>
+              <p class="hero-muted" style="margin-top:12px;">Placed ${formatDateTime(order.createdAt)}</p>
+            </div>
+          </div>
           </div>
 
+          <div class="content">
+          <div class="intro">
+            <p style="margin:0 0 8px;font-size:15px;">Receipt for <strong>${customerName}</strong></p>
+            <p style="margin:0;color:#475569;line-height:1.6;">This receipt confirms your ${isPickup ? 'pickup' : 'delivery'} order with ${vendor?.vendorName || 'Marketplace Store'}.</p>
+          </div>
           <div class="grid">
             <div class="card">
               <h2>Vendor</h2>
               <p><strong>${vendor?.vendorName || 'Marketplace Store'}</strong></p>
               <p>${[vendor?.storeAddress, vendor?.storeCity, vendor?.storeState].filter(Boolean).join(', ') || 'Store address not provided'}</p>
-              <p>${vendor?.vendorPhoneNumber || 'No store phone saved'}</p>
             </div>
             <div class="card">
               <h2>Customer</h2>
@@ -261,12 +327,24 @@ function buildOrderPrintMarkup(order: Order) {
             </tbody>
           </table>
 
-          <div class="totals">
-            <div class="totals-row"><span>Subtotal</span><span>${money(subtotal)}</span></div>
-            <div class="totals-row"><span>Platform fee</span><span>${money(order.platformFee || 0)}</span></div>
-            ${isPickup ? '' : `<div class="totals-row"><span>Delivery fee</span><span>${money(order.deliveryFee)}</span></div>`}
-            <div class="totals-row total"><span>Total</span><span>${money(order.total)}</span></div>
+          <div class="summary-grid">
+            <div class="note-card">
+              <h2>Receipt Note</h2>
+              <p style="line-height:1.6;color:#475569;">Keep this receipt for support, proof of purchase, and order tracking. Order reference: ${order.id}</p>
+            </div>
+            <div class="totals">
+              <div class="totals-row"><span>Subtotal</span><span>${money(subtotal)}</span></div>
+              <div class="totals-row"><span>Service fee</span><span>${money(order.platformFee || 0)}</span></div>
+              ${order.promoDiscount ? `<div class="totals-row"><span>Promo${order.promoCode ? ` (${order.promoCode})` : ''}</span><span>-${money(order.promoDiscount)}</span></div>` : ''}
+              ${isPickup ? '' : `<div class="totals-row"><span>Delivery fee</span><span>${money(order.deliveryFee)}</span></div>`}
+              <div class="totals-row total"><span>Total</span><span>${money(order.total)}</span></div>
+            </div>
           </div>
+          <div class="footer">
+            ${companyName} | Receipt #${order.receiptNumber}
+          </div>
+          </div>
+        </div>
         </div>
       </body>
     </html>
@@ -279,12 +357,17 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [reviewFormsOpen, setReviewFormsOpen] = useState<Record<string, boolean>>({})
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({})
   const [existingReviews, setExistingReviews] = useState<Record<string, ExistingReview | null>>({})
   const [reviewBusyKey, setReviewBusyKey] = useState<string | null>(null)
   const [reviewMessage, setReviewMessage] = useState<Record<string, string>>({})
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
+  const [cancelBusyOrderId, setCancelBusyOrderId] = useState<string | null>(null)
+  const [cancellationWindowMinutes, setCancellationWindowMinutes] = useState(1)
+  const [companyName, setCompanyName] = useState('DynaLink Connect')
+  const [nowTick, setNowTick] = useState(() => Date.now())
 
   useEffect(() => {
     if (status === 'loading') return
@@ -297,12 +380,23 @@ export default function OrdersPage() {
     const fetchOrders = async () => {
       setLoading(true)
       try {
-        const res = await fetch('/api/orders')
-        if (!res.ok) {
-          const data = await res.json()
+        const [ordersRes, settingsRes] = await Promise.all([
+          fetch('/api/orders'),
+          fetch('/api/site-settings'),
+        ])
+
+        if (!ordersRes.ok) {
+          const data = await ordersRes.json()
           throw new Error(data?.error || 'Failed to load orders')
         }
-        setOrders(await res.json())
+
+        if (settingsRes.ok) {
+          const settingsData = (await settingsRes.json()) as { settings?: SiteSettingsSummary }
+          setCancellationWindowMinutes(Math.max(0, Math.round(Number(settingsData.settings?.customerOrderCancellationWindowMinutes ?? 1))))
+          setCompanyName(settingsData.settings?.companyName || 'DynaLink Connect')
+        }
+
+        setOrders(await ordersRes.json())
       } catch (err) {
         setError((err as Error).message)
       } finally {
@@ -312,6 +406,11 @@ export default function OrdersPage() {
 
     void fetchOrders()
   }, [router, session, status])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNowTick(Date.now()), 1000)
+    return () => window.clearInterval(intervalId)
+  }, [])
 
   useEffect(() => {
     if (!orders.length) return
@@ -442,12 +541,42 @@ export default function OrdersPage() {
     const printWindow = window.open('', '_blank', 'width=900,height=1000')
     if (!printWindow) return
 
-    printWindow.document.write(buildOrderPrintMarkup(order))
+    printWindow.document.write(buildOrderPrintMarkup(order, companyName))
     printWindow.document.close()
     printWindow.focus()
     window.setTimeout(() => {
       printWindow.print()
     }, 250)
+  }
+
+  async function cancelOrder(orderId: string) {
+    setCancelBusyOrderId(orderId)
+    setActionError(null)
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'cancelled' }),
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to cancel order')
+      }
+
+      setOrders((current) =>
+        current.map((order) => (order.id === orderId ? { ...order, ...payload } : order))
+      )
+      if (activeOrderId === orderId) {
+        setActiveOrderId(orderId)
+      }
+    } catch (cancelError) {
+      setActionError(cancelError instanceof Error ? cancelError.message : 'Failed to cancel order')
+    } finally {
+      setCancelBusyOrderId(null)
+    }
   }
 
   if (status === 'loading' || loading) {
@@ -489,6 +618,11 @@ export default function OrdersPage() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#eef4ff_0%,#f6f8fc_48%,#eff3f8_100%)] py-6">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        {actionError ? (
+          <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {actionError}
+          </div>
+        ) : null}
         <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur">
           <div className="border-b border-slate-200/80 px-4 py-4 sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -518,6 +652,9 @@ export default function OrdersPage() {
                 const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0)
                 const itemSummary = getItemSummary(order)
                 const isPickup = order.fulfillmentMethod === 'pickup'
+                const paymentNote = getPaymentNote(order)
+                const canCancel = canCustomerCancelOrder(order, cancellationWindowMinutes, nowTick)
+                const timeLeftMs = getCancellationTimeLeftMs(order, cancellationWindowMinutes, nowTick)
 
                 return (
                   <article
@@ -556,9 +693,25 @@ export default function OrdersPage() {
                           </div>
                           <div className="font-semibold text-slate-950">{money(order.total)}</div>
                         </div>
+                        {paymentNote ? <p className="mt-2 text-xs font-medium text-amber-700">{paymentNote}</p> : null}
+                        {canCancel ? (
+                          <p className="mt-2 text-xs font-medium text-rose-700">
+                            You can cancel this order for {formatCountdown(timeLeftMs)} more.
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-2 lg:justify-end">
+                        {canCancel ? (
+                          <button
+                            type="button"
+                            onClick={() => void cancelOrder(order.id)}
+                            disabled={cancelBusyOrderId === order.id}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+                          >
+                            {cancelBusyOrderId === order.id ? 'Cancelling...' : 'Cancel order'}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => setActiveOrderId(order.id)}
@@ -591,6 +744,11 @@ export default function OrdersPage() {
             <div className="max-h-[92vh] w-full overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_100px_-42px_rgba(15,23,42,0.55)]">
               <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
                 <div>
+                  {getPaymentNote(selectedOrder) ? (
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">
+                      {getPaymentNote(selectedOrder)}
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-xl font-bold text-slate-950">Order #{selectedOrder.receiptNumber}</h2>
                     <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(selectedOrder.status)}`}>
@@ -598,8 +756,23 @@ export default function OrdersPage() {
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-slate-600">Placed {formatDateTime(selectedOrder.createdAt)}</p>
+                  {canCustomerCancelOrder(selectedOrder, cancellationWindowMinutes, nowTick) ? (
+                    <p className="mt-2 text-xs font-medium text-rose-700">
+                      You can still cancel this order for {formatCountdown(getCancellationTimeLeftMs(selectedOrder, cancellationWindowMinutes, nowTick))}.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
+                  {canCustomerCancelOrder(selectedOrder, cancellationWindowMinutes, nowTick) ? (
+                    <button
+                      type="button"
+                      onClick={() => void cancelOrder(selectedOrder.id)}
+                      disabled={cancelBusyOrderId === selectedOrder.id}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                    >
+                      {cancelBusyOrderId === selectedOrder.id ? 'Cancelling...' : 'Cancel order'}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => exportOrderPdf(selectedOrder)}
@@ -658,11 +831,17 @@ export default function OrdersPage() {
                             <span className="font-medium text-slate-900">{money(selectedOrder.deliveryFee)}</span>
                           </div>
                         ) : null}
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-slate-600">Platform fee</span>
-                          <span className="font-medium text-slate-900">{money(selectedOrder.platformFee || 0)}</span>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-3 text-base font-bold text-slate-950">
+                          <div className="flex items-center justify-between py-1">
+                            <span className="text-slate-600">Service fee</span>
+                            <span className="font-medium text-slate-900">{money(selectedOrder.platformFee || 0)}</span>
+                          </div>
+                          {selectedOrder.promoDiscount ? (
+                            <div className="flex items-center justify-between py-1 text-emerald-700">
+                              <span>Promo{selectedOrder.promoCode ? ` (${selectedOrder.promoCode})` : ''}</span>
+                              <span className="font-medium">-{money(selectedOrder.promoDiscount)}</span>
+                            </div>
+                          ) : null}
+                          <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-3 text-base font-bold text-slate-950">
                           <span>Total</span>
                           <span>{money(selectedOrder.total)}</span>
                         </div>
@@ -690,13 +869,6 @@ export default function OrdersPage() {
                           <div>
                             <p className="font-medium text-slate-900">{getCustomerName(selectedOrder)}</p>
                             <p>{selectedOrder.user.email}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <Phone className="mt-0.5 h-4 w-4 text-slate-400" />
-                          <div>
-                            <p className="font-medium text-slate-900">{selectedOrder.user.mobileNumber || 'No phone saved'}</p>
-                            <p>{getVendorSummary(selectedOrder)?.vendorPhoneNumber || 'No store phone saved'}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
@@ -829,6 +1001,7 @@ export default function OrdersPage() {
           </div>
         </div>
       ) : null}
+
     </div>
   )
 }

@@ -2,7 +2,8 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -16,6 +17,8 @@ model User {
   name             String?
   password         String?
   role             String       @default("user")
+  adminDepartment  String?
+  isSupportAgent   Boolean      @default(false)
   isActive         Boolean      @default(true)
   mobileNumber     String?
   language         String       @default("en")
@@ -25,6 +28,12 @@ model User {
   customerZipCode  String?
   firstName        String?
   lastName         String?
+  vehicleMake      String?
+  vehicleModel     String?
+  vehicleYear      Int?
+  vehicleMileageKm Int?
+  vehicleCapacityKg Int?
+  vehiclePlateNumber String?
   
   // Vendor fields
   isVendor         Boolean      @default(false)
@@ -62,6 +71,21 @@ model User {
   deliveryZones    DeliveryZone[] @relation("vendorDeliveryZones")
   orderItems       OrderItem[]
   notifications    Notification[]
+  pushSubscriptions PushSubscription[]
+  paynowSweepRuns  PayNowSweepRun[]
+  payNowReconciliationChecksTriggered PayNowReconciliationCheck[]
+  walletTransactions WalletTransaction[]
+  walletWithdrawalRequests WalletWithdrawalRequest[]
+  auctionsForSale   Auction[]     @relation("AuctionSeller")
+  wonAuctions       Auction[]     @relation("AuctionWinnerUser")
+  auctionBids       AuctionBid[]  @relation("AuctionBidder")
+  auctionClaims     AuctionClaim[] @relation("AuctionClaimWinner")
+  auctionClaimsReviewed AuctionClaim[] @relation("AuctionClaimReviewedBy")
+  auctionClaimsReleased AuctionClaim[] @relation("AuctionClaimReleasedBy")
+  auctionDisputesOpened AuctionDispute[] @relation("AuctionDisputeOpenedBy")
+  auctionDisputesResolved AuctionDispute[] @relation("AuctionDisputeResolvedBy")
+  submittedChangeRequests SystemChangeRequest[] @relation("SystemChangeRequestedBy")
+  reviewedChangeRequests SystemChangeRequest[] @relation("SystemChangeReviewedBy")
   
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -77,6 +101,7 @@ model Product {
   image       String?
   category    String?
   stock       Int        @default(0)
+  preparationTimeMinutes Int @default(0)
   salesCount  Int        @default(0)
   rating      Float      @default(0)
   averageRating Float    @default(0)
@@ -100,25 +125,33 @@ model Product {
 
 
 model Order {
-  id        String      @id @default(cuid())
-  orderNumber String?   @unique
-  userId    String
+    id        String      @id @default(cuid())
+    orderNumber String?   @unique
+    userId    String
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items     OrderItem[]
+  payNowReconciliationChecks PayNowReconciliationCheck[]
   total     Float
   status    String      @default("pending")
   payNowRef String?     @unique
+  payNowPollUrl String?
+  payNowBrowserUrl String?
+  payNowExternalReference String?
   
-  // Delivery tracking
-  deliveryAddress String?
-  deliveryFee Float     @default(0)
-  platformFee Float     @default(1)
-  fulfillmentMethod String @default("delivery")
-  requestedDeliveryAt DateTime?
+    // Delivery tracking
+    deliveryAddress String?
+    deliveryFee Float     @default(0)
+    platformFee Float     @default(1)
+    promoCode String?
+    promoDiscount Float   @default(0)
+    fulfillmentMethod String @default("delivery")
+    requestedDeliveryAt DateTime?
   
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-}
+    createdAt DateTime    @default(now())
+    updatedAt DateTime    @updatedAt
+
+    @@index([promoCode])
+  }
 
 model OrderItem {
   id        String  @id @default(cuid())
@@ -196,10 +229,11 @@ model WishlistItem {
   @@unique([userId, productId])
 }
 model PromoCode {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  discount    Float
-  description String?
+    id          String   @id @default(cuid())
+    code        String   @unique
+    discountType String  @default("cart")
+    discount    Float
+    description String?
   expiryDate  DateTime
   maxUses     Int      @default(1)
   currentUses Int      @default(0)
@@ -302,6 +336,49 @@ model Notification {
   @@index([createdAt])
 }
 
+model PushSubscription {
+  id               String   @id @default(cuid())
+  endpoint         String   @unique
+  p256dh           String
+  auth             String
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  visitorId        String?
+  audience         String   @default("all")
+  userAgent        String?
+  lastKnownPath    String?
+  isActive         Boolean  @default(true)
+  lastSeenAt       DateTime @default(now())
+  lastSentAt       DateTime?
+  lastErrorAt      DateTime?
+  lastErrorMessage String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([visitorId])
+  @@index([audience])
+  @@index([isActive, lastSeenAt])
+}
+
+model RegistrationVerification {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  mobileNumber String?
+  name         String
+  passwordHash String
+  channel      String
+  codeHash     String
+  attempts     Int      @default(0)
+  expiresAt    DateTime
+  lastSentAt   DateTime @default(now())
+  verifiedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
 model SiteSettings {
   id                   String   @id
   companyName          String   @default("DynaLink Connect")
@@ -314,17 +391,232 @@ model SiteSettings {
   primaryCtaHref       String   @default("/products")
   secondaryCtaLabel    String   @default("Become a Vendor")
   secondaryCtaHref     String   @default("/vendor/register")
-  whatsappNumber       String   @default("1234567890")
+  whatsappNumber       String   @default("+263788006331")
   referralEnabled      Boolean  @default(true)
   referralRewardAmount Float    @default(25)
   referralHeadline     String   @default("Referral program is active")
   platformOrdersPaused Boolean  @default(false)
   allStoresTemporarilyClosed Boolean @default(false)
   pickupEnabled        Boolean  @default(true)
-  platformFeePerOrder  Float    @default(1)
-  globalDeliveryEtaMinutes Int  @default(120)
-  googleMapsEmbedUrl   String?
+  paynowGatewayEnabled Boolean  @default(true)
+  ecocashGatewayEnabled Boolean @default(true)
+  onemoneyGatewayEnabled Boolean @default(true)
+  walletGatewayEnabled Boolean @default(true)
+  offlinePaymentEnabled Boolean @default(true)
+  payOnDeliveryEnabled Boolean  @default(false)
+  allowMultiVendorWithinRadius Boolean @default(false)
+  registrationOtpEnabled Boolean @default(true)
+  userChangeApprovalEnabled Boolean @default(false)
+  vendorChangeApprovalEnabled Boolean @default(false)
+    vendorStorePreviewEnabled Boolean @default(true)
+    vendorWorkspaceRestricted Boolean @default(true)
+    platformFeePerOrder  Float    @default(1)
+    driverCommissionRate Float    @default(50)
+    globalDeliveryEtaMinutes Int  @default(120)
+    customerOrderCancellationWindowMinutes Int @default(1)
+    googleMapsEmbedUrl   String?
+  customerAuthFaqJson   String?
+  customerSupportFaqJson String?
   platformStoreAddress String?  @default("DynaLink Connect")
   updatedAt            DateTime @updatedAt
   createdAt            DateTime @default(now())
+}
+
+model SystemChangeRequest {
+  id                String   @id @default(cuid())
+  requestedByUserId String
+  requestedByUser   User     @relation("SystemChangeRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  reviewedByUserId  String?
+  reviewedByUser    User?    @relation("SystemChangeReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  changeArea        String
+  changeType        String
+  payloadJson       String
+  status            String   @default("pending")
+  summary           String?
+  adminNotes        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([requestedByUserId, status])
+  @@index([status, createdAt])
+}
+
+model PayNowSweepRun {
+  id               String   @id @default(cuid())
+  triggerSource    String
+  triggeredByUserId String?
+  triggeredByUser  User?    @relation(fields: [triggeredByUserId], references: [id], onDelete: SetNull)
+  limit            Int
+  maxAgeHours      Int
+  scannedCount     Int      @default(0)
+  reconciledCount  Int      @default(0)
+  alreadyPaidCount Int      @default(0)
+  stillPendingCount Int     @default(0)
+  failedCount      Int      @default(0)
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([triggerSource])
+  @@index([triggeredByUserId])
+}
+
+model PayNowReconciliationCheck {
+  id                 String   @id @default(cuid())
+  orderId            String
+  order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  triggerSource      String
+  triggeredByUserId  String?
+  triggeredByUser    User?    @relation(fields: [triggeredByUserId], references: [id], onDelete: SetNull)
+  success            Boolean  @default(false)
+  reconciled         Boolean  @default(false)
+  alreadyPaid        Boolean  @default(false)
+  orderStatus        String
+  providerStatus     String?
+  error              String?
+  checkedAt          DateTime @default(now())
+
+  @@index([orderId, checkedAt])
+  @@index([triggerSource])
+  @@index([triggeredByUserId])
+}
+
+model WalletTransaction {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                  String
+  status                String   @default("pending")
+  amount                Float
+  balanceBefore         Float
+  balanceAfter          Float
+  reference             String?  @unique
+  description           String?
+  orderId               String?
+  payNowPollUrl         String?
+  payNowBrowserUrl      String?
+  payNowExternalReference String?
+  metadata              String?
+  processedAt           DateTime?
+  createdAt             DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([type])
+}
+
+model WalletWithdrawalRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Float
+  status      String   @default("pending")
+  mobileNumber String?
+  note        String?
+  reviewNotes String?
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model Auction {
+  id              String      @id @default(cuid())
+  sellerId        String
+  seller          User        @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  category        String?
+  image           String?
+  startingPrice   Float
+  reservePrice    Float?
+  buyNowPrice     Float?
+  minBidIncrement Float       @default(1)
+  currentPrice    Float       @default(0)
+  status          String      @default("draft")
+  startsAt        DateTime
+  endsAt          DateTime
+  winnerBidId     String?     @unique
+  winnerBid       AuctionBid? @relation("AuctionWinner", fields: [winnerBidId], references: [id], onDelete: SetNull)
+  winnerUserId    String?
+  winnerUser      User?       @relation("AuctionWinnerUser", fields: [winnerUserId], references: [id], onDelete: SetNull)
+  bids            AuctionBid[]
+  claim           AuctionClaim?
+  disputes        AuctionDispute[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([sellerId, status, startsAt])
+  @@index([status, endsAt])
+}
+
+model AuctionBid {
+  id         String    @id @default(cuid())
+  auctionId  String
+  auction    Auction   @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId   String
+  bidder     User      @relation("AuctionBidder", fields: [bidderId], references: [id], onDelete: Cascade)
+  amount     Float
+  isWinning  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  wonAuction Auction?  @relation("AuctionWinner")
+
+  @@index([auctionId, amount, createdAt])
+  @@index([bidderId, createdAt])
+}
+
+model AuctionClaim {
+  id           String   @id @default(cuid())
+  auctionId    String   @unique
+  auction      Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  winnerUserId String
+  winnerUser   User     @relation("AuctionClaimWinner", fields: [winnerUserId], references: [id], onDelete: Cascade)
+  amount       Float
+  status       String   @default("pending")
+  paymentMethod String?
+  walletTransactionId String?
+  reviewNote   String?
+  reviewedByUserId String?
+  reviewedByUser User? @relation("AuctionClaimReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  releasedByUserId String?
+  releasedByUser User? @relation("AuctionClaimReleasedBy", fields: [releasedByUserId], references: [id], onDelete: SetNull)
+  releasedAt   DateTime?
+  releaseAmount Float?
+  paidAt       DateTime?
+  fulfilledAt  DateTime?
+  disputes     AuctionDispute[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([winnerUserId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([reviewedByUserId])
+  @@index([releasedByUserId])
+}
+
+model AuctionDispute {
+  id             String   @id @default(cuid())
+  auctionId      String
+  auction        Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  claimId        String?
+  claim          AuctionClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  openedByUserId String
+  openedByUser   User     @relation("AuctionDisputeOpenedBy", fields: [openedByUserId], references: [id], onDelete: Cascade)
+  resolvedByUserId String?
+  resolvedByUser User?    @relation("AuctionDisputeResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  status         String   @default("open")
+  reason         String
+  details        String?
+  resolutionNote String?
+  openedAt       DateTime @default(now())
+  resolvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([auctionId, status, createdAt])
+  @@index([openedByUserId, createdAt])
+  @@index([resolvedByUserId])
+  @@index([claimId])
 }

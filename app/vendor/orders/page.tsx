@@ -2,9 +2,15 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useCallback } from 'react'
-import { VendorSidebar } from '@/components/vendor-sidebar'
-import { Package, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { AlertCircle, CheckCircle, Clock, Package } from 'lucide-react'
+import { formatOrderReceiptNumber } from '@/lib/order-reference'
+import { formatOrderItemStatus, getOrderStatusTone } from '@/lib/order-status'
+import {
+  VendorWorkspaceHeader,
+  VendorWorkspaceShell,
+  VendorWorkspaceStat,
+} from '@/components/vendor-workspace'
 
 interface VendorOrderApiItem {
   id: string
@@ -24,11 +30,8 @@ interface VendorOrderApiItem {
     total: number
     status: string
     createdAt: string
-    user: {
-      name?: string | null
-      email: string
-    }
   }
+  customerName?: string
   exceptions?: Array<{
     type: string
     note: string
@@ -65,11 +68,10 @@ interface Order {
   items: OrderItem[]
   user: {
     name: string
-    email: string
   }
 }
 
-type VendorOrderFilter = 'all' | 'pending' | 'accepted' | 'completed' | 'declined' | 'cancelled'
+type VendorOrderFilter = 'all' | 'pending' | 'accepted' | 'courier_on_the_way' | 'completed' | 'declined' | 'cancelled'
 
 function deriveOrderStatus(items: OrderItem[]) {
   const statuses = items.map((item) => item.status)
@@ -77,6 +79,9 @@ function deriveOrderStatus(items: OrderItem[]) {
   if (statuses.every((status) => status === 'completed')) return 'completed'
   if (statuses.every((status) => status === 'declined')) return 'declined'
   if (statuses.every((status) => status === 'cancelled')) return 'cancelled'
+  if (statuses.some((status) => status === 'courier_on_the_way')) return 'courier_on_the_way'
+  if (statuses.some((status) => status === 'arrived_at_vendor')) return 'accepted'
+  if (statuses.some((status) => status === 'courier_assigned')) return 'accepted'
   if (statuses.some((status) => status === 'accepted')) return 'accepted'
   return 'pending'
 }
@@ -110,28 +115,12 @@ function groupVendorOrders(items: VendorOrderApiItem[]): Order[] {
       createdAt: item.order.createdAt,
       items: [nextItem],
       user: {
-        name: item.order.user.name || item.order.user.email,
-        email: item.order.user.email,
+        name: item.customerName || 'Customer',
       },
     })
   }
 
   return Array.from(grouped.values())
-}
-
-function formatStatus(status: string) {
-  switch (status) {
-    case 'declined':
-      return 'Declined'
-    case 'accepted':
-      return 'Accepted'
-    case 'completed':
-      return 'Completed'
-    case 'cancelled':
-      return 'Cancelled'
-    default:
-      return 'Pending'
-  }
 }
 
 export default function VendorOrdersPage() {
@@ -223,186 +212,158 @@ export default function VendorOrdersPage() {
   }
 
   const filteredOrders = orders.filter((order) => (filter === 'all' ? true : order.status === filter))
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
+  const getStatusIcon = (statusValue: string) => {
+    switch (statusValue) {
       case 'pending':
-        return <Clock className="h-5 w-5 text-orange-600" />
+        return <Clock className="h-5 w-5 text-[#9a7423]" />
       case 'accepted':
-        return <Clock className="h-5 w-5 text-yellow-600" />
+        return <Clock className="h-5 w-5 text-[var(--brand-accent-strong)]" />
       case 'completed':
-        return <CheckCircle className="h-5 w-5 text-green-600" />
+        return <CheckCircle className="h-5 w-5 text-emerald-700" />
       case 'declined':
-        return <AlertCircle className="h-5 w-5 text-red-700" />
       case 'cancelled':
-        return <AlertCircle className="h-5 w-5 text-red-600" />
+        return <AlertCircle className="h-5 w-5 text-red-700" />
       default:
-        return <Package className="h-5 w-5 text-gray-400" />
+        return <Package className="h-5 w-5 text-[var(--muted)]" />
     }
   }
 
   if (status === 'loading' || loading) {
     return (
-      <div className="flex">
-        <VendorSidebar />
-        <div className="flex-1 ml-64 min-h-screen bg-gray-50 flex items-center justify-center">
+      <VendorWorkspaceShell contentClassName="flex items-center justify-center">
           <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p className="text-gray-600">Loading orders...</p>
+            <div className="mx-auto mb-4 inline-block h-12 w-12 animate-spin rounded-full border-b-2 border-[var(--brand-accent)]"></div>
+            <p className="text-[var(--muted)]">Loading orders...</p>
           </div>
-        </div>
-      </div>
+      </VendorWorkspaceShell>
     )
   }
 
   return (
-    <div className="flex">
-      <VendorSidebar />
-      <div className="flex-1 ml-64 min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
-            <p className="text-gray-600 mt-1">
-              Manage order acceptance and fulfillment. Delivery updates are handled by admin.
-            </p>
-          </div>
+    <VendorWorkspaceShell>
+      <VendorWorkspaceHeader
+        eyebrow="Order Queue"
+        title="Review and hand orders into dispatch."
+        description="Manage order acceptance here. After an item is accepted, courier assignment and trip completion move to the dispatch side."
+        stats={
+          <>
+            <VendorWorkspaceStat label="Total Orders" value={orders.length} />
+            <VendorWorkspaceStat label="Pending" value={orders.filter((order) => order.status === 'pending').length} helper="Needs vendor action" />
+            <VendorWorkspaceStat label="Accepted" value={orders.filter((order) => order.status === 'accepted').length} helper="Waiting on dispatch" />
+            <VendorWorkspaceStat label="Completed" value={orders.filter((order) => order.status === 'completed').length} helper="Delivered successfully" />
+          </>
+        }
+      />
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-gray-600 text-sm">Total Orders</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{orders.length}</p>
-            </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-gray-600 text-sm">Pending</p>
-              <p className="text-3xl font-bold text-orange-600 mt-2">
-                {orders.filter((order) => order.status === 'pending').length}
-              </p>
-            </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-gray-600 text-sm">Accepted</p>
-              <p className="text-3xl font-bold text-yellow-600 mt-2">
-                {orders.filter((order) => order.status === 'accepted').length}
-              </p>
-            </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-gray-600 text-sm">Completed</p>
-              <p className="text-3xl font-bold text-green-600 mt-2">
-                {orders.filter((order) => order.status === 'completed').length}
-              </p>
-            </div>
-          </div>
+      <div className="mt-6">
 
-          <div className="mb-6 flex gap-2 flex-wrap">
-            {(['all', 'pending', 'accepted', 'completed', 'declined', 'cancelled'] as const).map((status) => (
+          <div className="mb-6 flex flex-wrap gap-2">
+            {(['all', 'pending', 'accepted', 'courier_on_the_way', 'completed', 'declined', 'cancelled'] as const).map((statusValue) => (
               <button
-                key={status}
-                onClick={() => setFilter(status)}
-                className={`px-4 py-2 rounded-lg transition ${
-                  filter === status
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                key={statusValue}
+                onClick={() => setFilter(statusValue)}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  filter === statusValue ? 'theme-accent-btn text-white' : 'theme-secondary-btn'
                 }`}
               >
-                {status === 'all' ? 'All' : formatStatus(status)}
+                {statusValue === 'all' ? 'All' : formatOrderItemStatus(statusValue)}
               </button>
             ))}
           </div>
 
           {filteredOrders.length === 0 ? (
-            <div className="bg-white rounded-lg shadow p-12 text-center">
-              <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold text-gray-900 mb-2">No orders</h2>
-              <p className="text-gray-600">
+            <div className="theme-panel rounded-[1.6rem] p-12 text-center">
+              <Package className="mx-auto mb-4 h-16 w-16 text-[var(--muted)]/45" />
+              <h2 className="mb-2 text-2xl font-semibold text-[var(--brand-ink)]">No orders</h2>
+              <p className="text-[var(--muted)]">
                 You don&apos;t have any orders with status &quot;{filter}&quot;
               </p>
             </div>
           ) : (
             <div className="space-y-4">
               {filteredOrders.map((order) => (
-                <div key={order.id} className="bg-white rounded-lg shadow overflow-hidden">
-                  <div className="border-b border-gray-200 p-6">
-                    <div className="flex items-start justify-between">
+                <div key={order.id} className="theme-panel overflow-hidden rounded-[1.6rem]">
+                  <div className="border-b border-[var(--border)] bg-[var(--brand-accent-soft)]/35 p-6">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          Order #{order.orderNumber || order.id.slice(0, 8)}
+                        <h3 className="text-lg font-semibold text-[var(--brand-ink)]">
+                          Order #{formatOrderReceiptNumber(order.orderNumber, order.id)}
                         </h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Customer: {order.user.name} ({order.user.email})
-                        </p>
-                        <p className="text-sm text-gray-600">
+                        <p className="mt-1 text-sm text-[var(--muted)]">Marketplace customer</p>
+                        <p className="text-sm text-[var(--muted)]">
                           Placed on {new Date(order.createdAt).toLocaleDateString()}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-2 mb-2 justify-end">
+                      <div className="text-left md:text-right">
+                        <div className="mb-2 flex items-center gap-2 md:justify-end">
                           {getStatusIcon(order.status)}
-                          <span
-                            className={`font-semibold ${
-                              order.status === 'completed'
-                                ? 'text-green-600'
-                                : order.status === 'accepted'
-                                  ? 'text-yellow-600'
-                                  : order.status === 'declined'
-                                    ? 'text-red-700'
-                                    : order.status === 'pending'
-                                      ? 'text-orange-600'
-                                      : 'text-red-600'
-                            }`}
-                          >
-                            {formatStatus(order.status)}
+                          <span className={`font-semibold ${getOrderStatusTone(order.status)}`}>
+                            {formatOrderItemStatus(order.status)}
                           </span>
                         </div>
-                        <p className="text-2xl font-bold text-gray-900">${order.total.toFixed(2)}</p>
+                        <p className="text-2xl font-bold text-[var(--brand-ink)]">${order.total.toFixed(2)}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="p-6">
-                    <h4 className="font-semibold text-gray-900 mb-4">Order Items</h4>
+                    <h4 className="mb-4 font-semibold text-[var(--brand-ink)]">Order Items</h4>
                     <div className="space-y-4">
                       {order.items.map((item) => (
                         <div
                           key={item.id}
-                          className="flex gap-4 items-start border border-gray-200 rounded-lg p-4"
+                          className="grid gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-4 lg:grid-cols-[minmax(0,1fr)_18rem]"
                         >
-                          <div className="flex-1">
-                            <p className="font-medium text-gray-900">{item.product.name}</p>
-                            <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
+                          <div className="min-w-0">
+                            <p className="font-medium text-[var(--brand-ink)]">{item.product.name}</p>
+                            <p className="text-sm text-[var(--muted)]">Quantity: {item.quantity}</p>
                             {item.selectedOptionsSummary ? (
-                              <p className="text-xs text-slate-500">{item.selectedOptionsSummary}</p>
+                              <p className="text-xs text-[var(--muted)]">{item.selectedOptionsSummary}</p>
                             ) : null}
-                            <p className="text-sm text-gray-900 font-semibold mt-1">
+                            <p className="mt-1 text-sm font-semibold text-[var(--brand-ink)]">
                               ${(item.price * item.quantity).toFixed(2)}
                             </p>
                             {item.exceptions?.length ? (
                               <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-                                Latest exception: {item.exceptions[0]?.type.replaceAll('_', ' ')} · {item.exceptions[0]?.note}
+                                Latest exception: {item.exceptions[0]?.type.replaceAll('_', ' ')} - {item.exceptions[0]?.note}
                               </div>
                             ) : null}
                           </div>
 
-                          <div className="w-full max-w-xs">
-                            <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-500">
-                              Fulfillment status
+                          <div className="w-full max-w-full">
+                            <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+                              Vendor action
                             </label>
-                            <select
-                              value={item.status}
-                              disabled={updatingItemId === item.id}
-                              onChange={(event) =>
-                                updateOrderStatus(order.id, item.id, event.target.value)
-                              }
-                              className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              title="Update item status"
-                            >
-                              <option value="pending">Pending</option>
-                              <option value="accepted">Accepted</option>
-                              <option value="completed">Completed</option>
-                              <option value="declined">Declined</option>
-                              <option value="cancelled">Cancelled</option>
-                            </select>
-                            <p className="mt-2 text-xs text-gray-500">
-                              Delivery dispatch and courier progress are managed by admin.
-                            </p>
+                            {item.status === 'pending' ? (
+                              <>
+                                <select
+                                  value={item.status}
+                                  disabled={updatingItemId === item.id}
+                                  onChange={(event) =>
+                                    updateOrderStatus(order.id, item.id, event.target.value)
+                                  }
+                                  className="w-full rounded-xl border border-[var(--border-strong)] bg-white/80 px-3 py-2 text-sm text-[var(--brand-ink)] outline-none transition focus:border-[var(--brand-accent)]"
+                                  title="Update item status"
+                                >
+                                  <option value="pending">Pending</option>
+                                  <option value="accepted">Accept order</option>
+                                  <option value="declined">Decline order</option>
+                                  <option value="cancelled">Cancel order</option>
+                                </select>
+                                <p className="mt-2 text-xs text-[var(--muted)]">
+                                  Once accepted, dispatch takes over courier assignment and delivery flow.
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <div className={`inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ${getOrderStatusTone(item.status)}`}>
+                                  {formatOrderItemStatus(item.status)}
+                                </div>
+                                <p className="mt-2 text-xs text-[var(--muted)]">
+                                  Vendors can no longer change this item after acceptance. Courier delivery is completed from the rider side.
+                                </p>
+                              </>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -412,8 +373,8 @@ export default function VendorOrdersPage() {
               ))}
             </div>
           )}
-        </div>
       </div>
-    </div>
+    </VendorWorkspaceShell>
   )
 }
+

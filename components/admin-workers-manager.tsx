@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Loader2, Route, Search, ShieldCheck, UserCog, UsersRound } from 'lucide-react'
+import { Loader2, Route, Search, ShieldCheck, Trash2, UserCog, UsersRound } from 'lucide-react'
 import { AdminBadge, AdminSectionCard, AdminTableWrap } from '@/components/admin-ui'
 
 export type WorkerRow = {
@@ -10,6 +10,8 @@ export type WorkerRow = {
   name: string | null
   vendorName: string | null
   role: string
+  adminDepartment?: string | null
+  isSupportAgent: boolean
   isActive: boolean
   isVendor: boolean
   updatedAt: string | Date
@@ -27,6 +29,12 @@ const roleOptions = [
   { value: 'user', label: 'General User' },
 ] as const
 
+const adminDepartmentOptions = [
+  { value: 'full', label: 'Full Access' },
+  { value: 'marketing', label: 'Marketing Only' },
+  { value: 'finance', label: 'Finance Only' },
+] as const
+
 function roleTone(role: string): 'blue' | 'green' | 'amber' | 'neutral' {
   if (role === 'admin') return 'blue'
   if (role === 'vendor') return 'green'
@@ -41,11 +49,23 @@ export function AdminWorkersManager({
   initialWorkers: WorkerRow[]
 }) {
   const [workers, setWorkers] = useState(initialWorkers)
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    email: '',
+    mobileNumber: '',
+    role: 'user',
+    adminDepartment: 'full',
+    isSupportAgent: false,
+    password: '',
+  })
   const [savingId, setSavingId] = useState<string | null>(null)
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [createMessage, setCreateMessage] = useState<string | null>(null)
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'vendor' | 'courier' | 'user'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [supportFilter, setSupportFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
 
@@ -68,6 +88,14 @@ export function AdminWorkersManager({
         return false
       }
 
+      if (supportFilter === 'enabled' && !worker.isSupportAgent) {
+        return false
+      }
+
+      if (supportFilter === 'disabled' && worker.isSupportAgent) {
+        return false
+      }
+
       if (!normalizedSearch) {
         return true
       }
@@ -75,22 +103,31 @@ export function AdminWorkersManager({
       const haystack = `${worker.vendorName || ''} ${worker.name || ''} ${worker.email}`.toLowerCase()
       return haystack.includes(normalizedSearch)
     })
-  }, [roleFilter, search, statusFilter, workers])
+  }, [roleFilter, search, statusFilter, supportFilter, workers])
+
   const allFilteredSelected =
     filteredWorkers.length > 0 && filteredWorkers.every((worker) => selectedIds.includes(worker.id))
 
-  async function updateWorker(workerId: string, payload: Partial<Pick<WorkerRow, 'role' | 'isActive'>>) {
+  async function updateWorker(
+    workerId: string,
+    payload: Partial<Pick<WorkerRow, 'role' | 'isActive' | 'adminDepartment' | 'isSupportAgent'>>
+  ) {
     const worker = workers.find((entry) => entry.id === workerId)
     const workerLabel = worker?.vendorName || worker?.name || worker?.email || 'this worker'
     const actionLabel =
       payload.role !== undefined
         ? `change the role for ${workerLabel} to "${payload.role}"`
-        : payload.isActive === true
-          ? `activate ${workerLabel}`
-          : `deactivate ${workerLabel}`
+        : payload.adminDepartment !== undefined
+          ? `change the admin department for ${workerLabel} to "${payload.adminDepartment}"`
+          : payload.isSupportAgent !== undefined
+            ? payload.isSupportAgent
+              ? `add ${workerLabel} to customer support`
+              : `remove ${workerLabel} from customer support`
+          : payload.isActive === true
+            ? `activate ${workerLabel}`
+            : `deactivate ${workerLabel}`
 
-    const confirmed = window.confirm(`Are you sure you want to ${actionLabel}?`)
-    if (!confirmed) {
+    if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) {
       return
     }
 
@@ -109,9 +146,7 @@ export function AdminWorkersManager({
         throw new Error(data?.error || 'Failed to update worker')
       }
 
-      setWorkers((current) =>
-        current.map((worker) => (worker.id === workerId ? data : worker))
-      )
+      setWorkers((current) => current.map((worker) => (worker.id === workerId ? data : worker)))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update worker')
     } finally {
@@ -132,11 +167,7 @@ export function AdminWorkersManager({
           ? 'activate'
           : 'deactivate'
 
-    const confirmed = window.confirm(
-      `Are you sure you want to ${actionLabel} for ${selectedIds.length} selected worker${selectedIds.length === 1 ? '' : 's'}?`
-    )
-
-    if (!confirmed) {
+    if (!window.confirm(`Are you sure you want to ${actionLabel} for ${selectedIds.length} selected worker${selectedIds.length === 1 ? '' : 's'}?`)) {
       return
     }
 
@@ -161,9 +192,7 @@ export function AdminWorkersManager({
         })
       )
 
-      setWorkers((current) =>
-        current.map((worker) => updates.find((updated) => updated.id === worker.id) || worker)
-      )
+      setWorkers((current) => current.map((worker) => updates.find((updated) => updated.id === worker.id) || worker))
       setSelectedIds([])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update selected workers')
@@ -172,11 +201,96 @@ export function AdminWorkersManager({
     }
   }
 
+  async function createWorker() {
+    setCreating(true)
+    setError(null)
+    setCreateMessage(null)
+
+    try {
+      const response = await fetch('/api/admin/workers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createForm),
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to create account')
+      }
+
+      if (data?.worker) {
+        setWorkers((current) => [data.worker as WorkerRow, ...current])
+      }
+
+      setCreateMessage(
+        data?.temporaryPassword
+          ? `Account created. Temporary password: ${data.temporaryPassword}`
+          : 'Account created successfully.'
+      )
+      setCreateForm({
+        name: '',
+        email: '',
+        mobileNumber: '',
+        role: 'user',
+        adminDepartment: 'full',
+        isSupportAgent: false,
+        password: '',
+      })
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Failed to create account')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  async function deleteWorker(workerId: string) {
+    const worker = workers.find((entry) => entry.id === workerId)
+    const workerLabel = worker?.vendorName || worker?.name || worker?.email || 'this worker'
+    if (!window.confirm(`Are you sure you want to delete ${workerLabel}? This cannot be undone.`)) {
+      return
+    }
+
+    setSavingId(workerId)
+    setError(null)
+    try {
+      const response = await fetch(`/api/admin/workers/${workerId}`, {
+        method: 'DELETE',
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        const errorMessage = data?.error || 'Failed to delete worker'
+        if (
+          typeof errorMessage === 'string' &&
+          errorMessage.toLowerCase().includes('linked records') &&
+          window.confirm('This worker has linked records and cannot be hard-deleted. Archive (deactivate) instead?')
+        ) {
+          const archiveRes = await fetch(`/api/admin/workers/${workerId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isActive: false }),
+          })
+          const archiveData = await archiveRes.json().catch(() => null)
+          if (!archiveRes.ok) {
+            throw new Error(archiveData?.error || 'Failed to archive worker')
+          }
+          setWorkers((current) => current.map((entry) => (entry.id === workerId ? archiveData : entry)))
+          return
+        }
+        throw new Error(errorMessage)
+      }
+
+      setWorkers((current) => current.filter((entry) => entry.id !== workerId))
+      setSelectedIds((current) => current.filter((id) => id !== workerId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete worker')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
   function toggleSelected(workerId: string) {
     setSelectedIds((current) =>
-      current.includes(workerId)
-        ? current.filter((id) => id !== workerId)
-        : [...current, workerId]
+      current.includes(workerId) ? current.filter((id) => id !== workerId) : [...current, workerId]
     )
   }
 
@@ -191,6 +305,81 @@ export function AdminWorkersManager({
 
   return (
     <div className="space-y-4">
+      <AdminSectionCard
+        title="Create Account"
+        description="Create customer, courier, vendor, or admin accounts from one workspace. Admin accounts can be scoped to finance or marketing only."
+      >
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <input
+            value={createForm.name}
+            onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
+            placeholder="Name"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          />
+          <input
+            value={createForm.email}
+            onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
+            placeholder="Email"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          />
+          <input
+            value={createForm.mobileNumber}
+            onChange={(event) => setCreateForm((current) => ({ ...current, mobileNumber: event.target.value }))}
+            placeholder="Mobile number"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          />
+          <select
+            value={createForm.role}
+            onChange={(event) => setCreateForm((current) => ({ ...current, role: event.target.value }))}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          >
+            {roleOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={createForm.adminDepartment}
+            onChange={(event) => setCreateForm((current) => ({ ...current, adminDepartment: event.target.value }))}
+            disabled={createForm.role !== 'admin'}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:opacity-50"
+          >
+            {adminDepartmentOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={createForm.password}
+            onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
+            placeholder="Password optional"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          />
+        </div>
+        <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={createForm.isSupportAgent}
+            onChange={(event) => setCreateForm((current) => ({ ...current, isSupportAgent: event.target.checked }))}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Mark as support agent
+        </label>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void createWorker()}
+            disabled={creating}
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {creating ? 'Creating...' : 'Create account'}
+          </button>
+          {createMessage ? <p className="text-sm text-emerald-700">{createMessage}</p> : null}
+        </div>
+      </AdminSectionCard>
+
       <div className="grid gap-2 md:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
@@ -240,7 +429,7 @@ export function AdminWorkersManager({
 
       <AdminSectionCard
         title="Staff Role Control"
-        description="Assign worker roles and control account access directly from this department."
+        description="Assign worker roles, switch department-only admin access, and control who can still use each account."
         contentClassName="p-0"
         action={
           <>
@@ -265,6 +454,16 @@ export function AdminWorkersManager({
               <option value="all">All access</option>
               <option value="active">Active only</option>
               <option value="inactive">Inactive only</option>
+            </select>
+            <select
+              value={supportFilter}
+              onChange={(event) => setSupportFilter(event.target.value as typeof supportFilter)}
+              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900"
+              title="Filter workers by support assignment"
+            >
+              <option value="all">All support states</option>
+              <option value="enabled">Support On only</option>
+              <option value="disabled">Support Off only</option>
             </select>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -310,9 +509,7 @@ export function AdminWorkersManager({
           </>
         }
       >
-        {error ? (
-          <div className="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
-        ) : null}
+        {error ? <div className="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div> : null}
         <AdminTableWrap>
           <table className="w-full text-sm">
             <thead className="border-b bg-slate-50">
@@ -340,63 +537,104 @@ export function AdminWorkersManager({
                     No workers match the current filters.
                   </td>
                 </tr>
-              ) : filteredWorkers.map((worker) => {
-                const busy = savingId === worker.id || bulkSaving
-                return (
-                  <tr key={worker.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="px-3 py-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(worker.id)}
-                        onChange={() => toggleSelected(worker.id)}
-                        className="h-4 w-4 rounded border-slate-300"
-                        title="Select worker"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <p className="font-medium text-slate-900">{worker.vendorName || worker.name || worker.email}</p>
-                      <p className="text-xs text-slate-500">{worker.email}</p>
-                    </td>
-                    <td className="px-3 py-2">
-                      <AdminBadge label={worker.role} tone={roleTone(worker.role)} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={worker.role}
-                          disabled={busy}
-                          onChange={(event) => void updateWorker(worker.id, { role: event.target.value })}
-                          className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900"
-                          title="Worker role"
-                        >
-                          {roleOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        {busy ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : null}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <button
-                        onClick={() => void updateWorker(worker.id, { isActive: !worker.isActive })}
-                        disabled={busy}
-                        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
-                          worker.isActive
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        {worker.isActive ? 'Active' : 'Inactive'}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-700">
-                      {worker._count.orders} orders | {worker._count.products} products | {worker._count.supportTickets} tickets
-                    </td>
-                  </tr>
-                )
-              })}
+              ) : (
+                filteredWorkers.map((worker) => {
+                  const busy = savingId === worker.id || bulkSaving
+
+                  return (
+                    <tr key={worker.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(worker.id)}
+                          onChange={() => toggleSelected(worker.id)}
+                          className="h-4 w-4 rounded border-slate-300"
+                          title="Select worker"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-slate-900">{worker.vendorName || worker.name || worker.email}</p>
+                        <p className="text-xs text-slate-500">{worker.email}</p>
+                      </td>
+                      <td className="px-3 py-2">
+                        <AdminBadge label={worker.role} tone={roleTone(worker.role)} />
+                        {worker.role === 'admin' ? (
+                          <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                            {worker.adminDepartment || 'full'}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={worker.role}
+                            disabled={busy}
+                            onChange={(event) => void updateWorker(worker.id, { role: event.target.value })}
+                            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900"
+                            title="Worker role"
+                          >
+                            {roleOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          {worker.role === 'admin' ? (
+                            <select
+                              value={worker.adminDepartment || 'full'}
+                              disabled={busy}
+                              onChange={(event) => void updateWorker(worker.id, { adminDepartment: event.target.value })}
+                              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900"
+                              title="Admin department"
+                            >
+                              {adminDepartmentOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
+                          {busy ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => void updateWorker(worker.id, { isActive: !worker.isActive })}
+                            disabled={busy}
+                            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
+                              worker.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {worker.isActive ? 'Active' : 'Inactive'}
+                          </button>
+                          <button
+                            onClick={() => void updateWorker(worker.id, { isSupportAgent: !worker.isSupportAgent })}
+                            disabled={busy}
+                            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
+                              worker.isSupportAgent ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {worker.isSupportAgent ? 'Support On' : 'Support Off'}
+                          </button>
+                          <button
+                            onClick={() => void deleteWorker(worker.id)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700 disabled:opacity-50"
+                            title="Delete worker"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-700">
+                        {worker._count.orders} orders | {worker._count.products} products | {worker._count.supportTickets} tickets
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </AdminTableWrap>
