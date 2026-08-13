@@ -1,0 +1,33 @@
+name: Build Linux x64 node_modules
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build node_modules (linux x64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install production deps (include optional native deps)
+        run: |
+          npm ci --production --include=optional --unsafe-perm --no-audit --loglevel=http
+
+      - name: Create tarball of node_modules
+        run: |
+          tar -czf passenger-node_modules-linux-x64.tgz node_modules
+          ls -lh passenger-node_modules-linux-x64.tgz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: passenger-node_modules-linux-x64
+          path: passenger-node_modules-linux-x64.tgz
