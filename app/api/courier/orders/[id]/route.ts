@@ -12,6 +12,8 @@ import {
   upsertRiderTracking,
 } from '@/lib/courier-tracking'
 import { syncVendorLedgerBalance } from '@/lib/vendor-ledger'
+import { ensureSiteSettings } from '@/lib/admin/site-settings'
+import settleCourierForOrder from '@/lib/courier-settlement'
 
 const COURIER_ALLOWED_STATUSES = ['courier_on_the_way', 'completed'] as const
 
@@ -232,6 +234,41 @@ export async function PATCH(
         }
       })
     )
+
+    // If this patch completed items and the overall order is now completed,
+    // settle driver wallet amounts once (credit for online payments, deduct for pay-on-delivery).
+    if (status === 'completed') {
+      try {
+        const order = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            paymentMethod: true,
+            productMarkup: true,
+            serviceFee: true,
+            platformDeliveryShare: true,
+            deliveryFee: true,
+          },
+        })
+
+        const settings = await ensureSiteSettings()
+
+        if (order && overallStatus === 'completed') {
+          await settleCourierForOrder(prisma, {
+            orderId: order.id,
+            courierId,
+            paymentMethod: order.paymentMethod,
+            productMarkup: order.productMarkup,
+            serviceFee: order.serviceFee,
+            platformDeliveryShare: order.platformDeliveryShare,
+            updatedItems: updatedItems.map((it) => ({ id: it.id, deliveryFee: it.deliveryFee })),
+            driverPlatformPercent: settings.driverPlatformPercent || 0,
+          })
+        }
+      } catch (err) {
+        console.error('Failed to settle courier wallet for order', orderId, err)
+      }
+    }
 
     await upsertRiderTracking({
       courierId,
